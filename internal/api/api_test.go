@@ -1,13 +1,17 @@
 package api_test
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/fiat/content-studio/internal/api"
 	"github.com/fiat/content-studio/internal/artifacts"
@@ -20,6 +24,11 @@ import (
 const token = "test-token-1234"
 
 func server(t *testing.T) *httptest.Server {
+	ts, _ := serverDB(t)
+	return ts
+}
+
+func serverDB(t *testing.T) (*httptest.Server, *pgxpool.Pool) {
 	db := storetest.New(t)
 	st := &artifacts.Store{Root: t.TempDir()}
 	s := &api.Server{DB: db, Queue: &jobs.Queue{DB: db, Plan: pipeline.FictionalSeries, MaxAttempts: 3}, Store: st,
@@ -27,7 +36,7 @@ func server(t *testing.T) *httptest.Server {
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	ts := httptest.NewServer(s.Echo())
 	t.Cleanup(ts.Close)
-	return ts
+	return ts, db
 }
 
 func call(t *testing.T, ts *httptest.Server, method, path, auth, body string) (int, map[string]any) {
@@ -108,5 +117,49 @@ func TestLanguageIsStoredInTheBackend(t *testing.T) {
 	call(t, ts, "PUT", "/api/settings", token, `{"ui_lang":"en"}`)
 	if _, body := call(t, ts, "GET", "/api/settings", "", ""); body["ui_lang"] != "en" {
 		t.Fatalf("after put %v", body)
+	}
+}
+
+func TestRerenderCanStartFromARewriteRun(t *testing.T) {
+	ts, db := serverDB(t)
+	_, ep := storetest.Episode(t, db)
+	ctx := context.Background()
+	// The original full run failed at the voice stage, so only the rewrite run reached subtitles.
+	var full, rewrite int64
+	if err := db.QueryRow(ctx, `INSERT INTO workflow_runs (episode_id, profile, kind, state) VALUES ($1, 'fictional_series', 'full', 'failed') RETURNING id`, ep).Scan(&full); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(ctx, `INSERT INTO workflow_runs (episode_id, profile, kind, parent_run_id, state, feedback) VALUES ($1, 'fictional_series', 'rewrite', $2, 'ready_for_review', 'x') RETURNING id`, ep, full).Scan(&rewrite); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO jobs (run_id, stage, seq, state) VALUES ($1, 'subtitles', 3, 'completed')`, rewrite); err != nil {
+		t.Fatal(err)
+	}
+	code, body := call(t, ts, "POST", "/api/episodes/"+strconv.FormatInt(ep, 10)+"/rerender", token, "{}")
+	if code != http.StatusCreated || body["run_id"] == nil {
+		t.Fatalf("%d %v", code, body)
+	}
+	var parent int64
+	if err := db.QueryRow(ctx, `SELECT parent_run_id FROM workflow_runs WHERE id = $1`, int64(body["run_id"].(float64))).Scan(&parent); err != nil || parent != rewrite {
+		t.Fatalf("re-render parent %d (err %v), want the rewrite run %d", parent, err, rewrite)
+	}
+}
+
+func TestRunActionsReportConflictAndNotFoundDistinctly(t *testing.T) {
+	ts, db := serverDB(t)
+	_, ep := storetest.Episode(t, db)
+	var run int64
+	if err := db.QueryRow(context.Background(), `INSERT INTO workflow_runs (episode_id, profile, kind, state) VALUES ($1, 'fictional_series', 'full', 'ready_for_review') RETURNING id`, ep).Scan(&run); err != nil {
+		t.Fatal(err)
+	}
+	id := strconv.FormatInt(run, 10)
+	if code, body := call(t, ts, "POST", "/api/runs/"+id+"/retry", token, "{}"); code != http.StatusConflict || !strings.Contains(body["error"].(string), "only failed runs can be retried") {
+		t.Fatalf("retry of a finished run: %d %v", code, body)
+	}
+	if code, body := call(t, ts, "POST", "/api/runs/"+id+"/cancel", token, "{}"); code != http.StatusConflict || !strings.Contains(body["error"].(string), "not running") {
+		t.Fatalf("cancel of a finished run: %d %v", code, body)
+	}
+	if code, _ := call(t, ts, "POST", "/api/runs/999999/retry", token, "{}"); code != http.StatusNotFound {
+		t.Fatalf("retry of a missing run: %d, want 404", code)
 	}
 }

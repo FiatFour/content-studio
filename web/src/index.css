@@ -22,7 +22,7 @@
   --color-agent-guard: #9FBF8F;
   --font-sans: "IBM Plex Sans Thai", system-ui, sans-serif;
   --font-display: "Bricolage Grotesque", "IBM Plex Sans Thai", sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-mono: "IBM Plex Mono", "IBM Plex Sans Thai", ui-monospace, monospace;
 }
 
 html, body, #root { min-height: 100%; }

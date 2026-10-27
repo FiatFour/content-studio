@@ -21,3 +21,18 @@ func TestTransitionEveryPair(t *testing.T) {
 		}
 	}
 }
+
+func TestEveryErrorClassHasTheIntendedRemedy(t *testing.T) {
+	want := map[ErrorClass]Remedy{
+		ErrTransientNetwork: RetryStage, ErrValidationFailed: RetryStage,
+		ErrInsufficientLocal: RetryStage, ErrWorkerRestart: RetryStage,
+		ErrScriptDuration: RewriteScript, ErrCancelled: CancelRun,
+		ErrInvalidInput: FailRun, ErrUnsupported: FailRun, ErrInternal: FailRun,
+		ErrQAFailed: FailRun, ErrorClass("a_class_nobody_classified"): FailRun,
+	}
+	for c, r := range want {
+		if got := c.Remedy(); got != r {
+			t.Errorf("%s: remedy %d, want %d", c, got, r)
+		}
+	}
+}

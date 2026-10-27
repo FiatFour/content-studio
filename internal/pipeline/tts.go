@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"strconv"
+	"time"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
@@ -42,6 +43,8 @@ func (s *ttsStage) Run(ctx context.Context, j *jobs.Job, progress func(int, int)
 	refs := map[string][]byte{}
 	refArts := map[string]*artifacts.Artifact{}
 	total := len(lines)
+	durs := make([]time.Duration, 0, total)
+	chars := 0
 	for i, l := range lines {
 		progress(i, total)
 		if _, ok := refs[l.Speaker]; !ok {
@@ -67,11 +70,20 @@ func (s *ttsStage) Run(ctx context.Context, j *jobs.Job, progress func(int, int)
 		if err != nil {
 			return nil, err
 		}
+		durs = append(durs, pcm.Duration())
+		chars += utf8.RuneCountInString(l.Text)
 		meta := map[string]any{"speaker": l.Speaker, "text": l.Text, "shot": l.Shot, "duration_ms": pcm.Duration().Milliseconds(), "sample_rate": pcm.SampleRate}
 		if _, err := out.bytes(artifacts.LineAudio, lineKey(i), wav, info, meta, []int64{scriptArt.ID}, refArts[l.Speaker]); err != nil {
 			return nil, err
 		}
 		progress(i+1, total)
+	}
+	e, err := d.episode(ctx, j.EpisodeID)
+	if err != nil {
+		return nil, err
+	}
+	if fb := dialogueFit(script.Shots(), durs, chars, e.TargetDurationS); fb != "" {
+		return nil, jobs.Errorf(jobs.ErrScriptDuration, nil, "%s", fb)
 	}
 	return out.persist(nil), nil
 }

@@ -23,14 +23,6 @@ type Worker struct {
 	RetryDelay   time.Duration
 }
 
-func retryable(c ErrorClass) bool {
-	switch c {
-	case ErrTransientNetwork, ErrValidationFailed, ErrInsufficientLocal, ErrWorkerRestart:
-		return true
-	}
-	return false
-}
-
 // Run processes jobs one at a time until ctx ends. One worker means one GPU-heavy stage at a time.
 func (w *Worker) Run(ctx context.Context) error {
 	n, err := w.Queue.RecoverInterrupted(ctx)
@@ -71,7 +63,7 @@ func (w *Worker) RunOne(ctx context.Context) (bool, error) {
 	log.Info("job state", "state", Running)
 	stage, ok := w.Stages[j.Stage]
 	if !ok {
-		return true, w.Queue.Fail(ctx, j, Errorf(ErrUnsupported, nil, "no implementation for stage %s", j.Stage), false, 0)
+		return true, w.Queue.Fail(ctx, j, Errorf(ErrUnsupported, nil, "no implementation for stage %s", j.Stage), 0)
 	}
 
 	stageCtx, cancel := context.WithCancel(ctx)
@@ -100,7 +92,7 @@ func (w *Worker) RunOne(ctx context.Context) (bool, error) {
 		se = &StageError{Class: ErrCancelled, Message: "cancelled by user"}
 	}
 	log.Warn("job failed", "error_class", se.Class, "err", err, "duration_s", time.Since(start).Seconds())
-	return true, w.Queue.Fail(ctx, j, se, retryable(se.Class), w.RetryDelay)
+	return true, w.Queue.Fail(ctx, j, se, w.RetryDelay)
 }
 
 func classify(err error) *StageError {

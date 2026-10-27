@@ -30,7 +30,7 @@ type Job struct {
 	EpisodeID   int64
 	ProjectID   int64
 	RunKind     string
-	SourceRunID *int64
+	ParentRunID *int64
 	Stage       string
 	Seq         int
 	State       State
@@ -46,16 +46,28 @@ type Queue struct {
 
 var ErrNoJob = errors.New("no job ready")
 
-// CreateRun starts a run for an episode and queues its first stage.
-func (q *Queue) CreateRun(ctx context.Context, episodeID int64, kind string, sourceRunID *int64) (int64, error) {
+// ConflictError means the request is valid but the run is in the wrong state for it. Its message
+// names only the state, so the API can show it as is.
+type ConflictError struct{ Msg string }
+
+func (e *ConflictError) Error() string { return e.Msg }
+
+func conflictf(format string, args ...any) error {
+	return &ConflictError{Msg: fmt.Sprintf(format, args...)}
+}
+
+// CreateRun starts a run for an episode and queues its first stage. A "full" run has no parent; a
+// "rerender" run has the run whose inputs it reuses. Rewrite runs are created only by the queue itself
+// (startRewrite), because they need feedback; the database rejects any other combination.
+func (q *Queue) CreateRun(ctx context.Context, episodeID int64, kind string, parentRunID *int64) (int64, error) {
 	stages := q.Plan.stages(kind)
 	if len(stages) == 0 {
 		return 0, fmt.Errorf("unknown run kind %q", kind)
 	}
 	var runID int64
 	err := pgx.BeginFunc(ctx, q.DB, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `INSERT INTO workflow_runs (episode_id, profile, kind, source_run_id, state)
-			VALUES ($1, $2, $3, $4, $5) RETURNING id`, episodeID, q.Plan.Profile, kind, sourceRunID, RunRunning).Scan(&runID); err != nil {
+		if err := tx.QueryRow(ctx, `INSERT INTO workflow_runs (episode_id, profile, kind, parent_run_id, state)
+			VALUES ($1, $2, $3, $4, $5) RETURNING id`, episodeID, q.Plan.Profile, kind, parentRunID, RunRunning).Scan(&runID); err != nil {
 			return err
 		}
 		return insertJob(ctx, tx, runID, stages[0], 0)
@@ -76,10 +88,10 @@ func (q *Queue) Claim(ctx context.Context) (*Job, error) {
 		if _, err := tx.Exec(ctx, `UPDATE jobs SET state = $1, updated_at = now() WHERE state = $2 AND run_after <= now()`, Queued, RetryScheduled); err != nil {
 			return err
 		}
-		err := tx.QueryRow(ctx, `SELECT j.id, j.run_id, r.episode_id, e.project_id, r.kind, r.source_run_id, j.stage, j.seq, j.state, j.attempt_count, j.attempt_base
+		err := tx.QueryRow(ctx, `SELECT j.id, j.run_id, r.episode_id, e.project_id, r.kind, r.parent_run_id, j.stage, j.seq, j.state, j.attempt_count, j.attempt_base
 			FROM jobs j JOIN workflow_runs r ON r.id = j.run_id JOIN episodes e ON e.id = r.episode_id
 			WHERE j.state = $1 ORDER BY j.id LIMIT 1 FOR UPDATE OF j SKIP LOCKED`, Queued).
-			Scan(&j.ID, &j.RunID, &j.EpisodeID, &j.ProjectID, &j.RunKind, &j.SourceRunID, &j.Stage, &j.Seq, &j.State, &j.Attempt, &j.AttemptBase)
+			Scan(&j.ID, &j.RunID, &j.EpisodeID, &j.ProjectID, &j.RunKind, &j.ParentRunID, &j.Stage, &j.Seq, &j.State, &j.Attempt, &j.AttemptBase)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNoJob
 		}
@@ -149,16 +161,17 @@ func (q *Queue) Complete(ctx context.Context, j *Job, persist func(pgx.Tx) error
 
 // Fail records a stage failure. A retryable failure under the attempt limit is scheduled again;
 // anything else fails the job and its run with the sanitized reason.
-func (q *Queue) Fail(ctx context.Context, j *Job, se *StageError, retryable bool, delay time.Duration) error {
+func (q *Queue) Fail(ctx context.Context, j *Job, se *StageError, delay time.Duration) error {
+	remedy := se.Class.Remedy()
 	return pgx.BeginFunc(ctx, q.DB, func(tx pgx.Tx) error {
 		cur, err := lockRunning(ctx, tx, j.ID)
 		if err != nil {
 			return err
 		}
 		to := Failed
-		if se.Class == ErrCancelled {
+		if remedy == CancelRun {
 			to = Cancelled
-		} else if retryable && j.Attempt-j.AttemptBase < q.MaxAttempts {
+		} else if remedy == RetryStage && j.Attempt-j.AttemptBase < q.MaxAttempts {
 			to = RetryScheduled
 		}
 		if err := Transition(cur, to); err != nil {
@@ -180,9 +193,64 @@ func (q *Queue) Fail(ctx context.Context, j *Job, se *StageError, retryable bool
 		if to == Cancelled {
 			runState = RunCancelled
 		}
-		_, err = tx.Exec(ctx, `UPDATE workflow_runs SET state = $1, finished_at = now() WHERE id = $2`, runState, j.RunID)
-		return err
+		if _, err = tx.Exec(ctx, `UPDATE workflow_runs SET state = $1, finished_at = now() WHERE id = $2`, runState, j.RunID); err != nil {
+			return err
+		}
+		if to == Failed && remedy == RewriteScript {
+			return q.autoRewrite(ctx, tx, j.RunID, se.Message)
+		}
+		return nil
 	})
+}
+
+// autoRewrite starts the next rewrite unless the user cancelled the run or the chain has reached
+// MaxAutoRewrites. A failure to find out is returned, so the whole Fail rolls back and the worker's
+// next start recovers the job instead of the failure being recorded without its rewrite.
+func (q *Queue) autoRewrite(ctx context.Context, tx pgx.Tx, runID int64, feedback string) error {
+	var cancelled bool
+	if err := tx.QueryRow(ctx, `SELECT cancel_requested FROM workflow_runs WHERE id = $1`, runID).Scan(&cancelled); err != nil {
+		return err
+	}
+	if cancelled {
+		return nil
+	}
+	depth, err := rewriteDepth(ctx, tx, runID)
+	if err != nil {
+		return err
+	}
+	if depth >= MaxAutoRewrites {
+		return nil
+	}
+	_, err = q.startRewrite(ctx, tx, runID, feedback)
+	return err
+}
+
+// MaxAutoRewrites bounds how many rewrites in a row the queue starts by itself because the spoken
+// dialogue came out the wrong length. After that the last run stays failed for a person to decide.
+const MaxAutoRewrites = 2
+
+// rewriteDepth counts the consecutive rewrite runs that end at runID, following parents while the
+// run is itself a rewrite. It is derived from the chain, so it cannot drift from the runs.
+func rewriteDepth(ctx context.Context, tx pgx.Tx, runID int64) (int, error) {
+	var n int
+	err := tx.QueryRow(ctx, `WITH RECURSIVE chain AS (
+			SELECT id, parent_run_id, kind FROM workflow_runs WHERE id = $1
+			UNION ALL
+			SELECT r.id, r.parent_run_id, r.kind FROM workflow_runs r JOIN chain c ON r.id = c.parent_run_id WHERE c.kind = 'rewrite')
+		SELECT count(*) FROM chain WHERE kind = 'rewrite'`, runID).Scan(&n)
+	return n, err
+}
+
+// startRewrite queues one new run for the same episode whose scriptwriter sees feedback.
+// It runs in the same transaction that failed the old run, so a crash cannot leave one without the other.
+func (q *Queue) startRewrite(ctx context.Context, tx pgx.Tx, runID int64, feedback string) (int64, error) {
+	var newID int64
+	if err := tx.QueryRow(ctx, `INSERT INTO workflow_runs (episode_id, profile, kind, parent_run_id, state, feedback)
+		SELECT episode_id, profile, 'rewrite', id, $2, $3 FROM workflow_runs WHERE id = $1 RETURNING id`,
+		runID, RunRunning, feedback).Scan(&newID); err != nil {
+		return 0, err
+	}
+	return newID, insertJob(ctx, tx, newID, q.Plan.stages("rewrite")[0], 0)
 }
 
 // RecoverInterrupted runs at worker start. A job left running by a crashed worker is rerun from
@@ -209,7 +277,7 @@ func (q *Queue) RecoverInterrupted(ctx context.Context) (int, error) {
 	}
 	for i := range stale {
 		se := &StageError{Class: ErrWorkerRestart, Message: "worker stopped while this stage was running"}
-		if err := q.Fail(ctx, &stale[i], se, true, 0); err != nil {
+		if err := q.Fail(ctx, &stale[i], se, 0); err != nil {
 			return i, err
 		}
 	}
@@ -225,7 +293,7 @@ func (q *Queue) RequestCancel(ctx context.Context, runID int64) error {
 			return err
 		}
 		if state != RunRunning {
-			return fmt.Errorf("run is %s, not running", state)
+			return conflictf("run is %s, not running", state)
 		}
 		if _, err := tx.Exec(ctx, `UPDATE workflow_runs SET cancel_requested = true WHERE id = $1`, runID); err != nil {
 			return err
@@ -262,20 +330,37 @@ func (q *Queue) SetProvider(ctx context.Context, jobID int64, provider, model st
 	return err
 }
 
-// RetryFailed puts a failed run's failed job back in the queue. This is the manual retry
-// from the UI; it is the only way out of the failed state.
-func (q *Queue) RetryFailed(ctx context.Context, runID int64) error {
-	return pgx.BeginFunc(ctx, q.DB, func(tx pgx.Tx) error {
+// Resume is the manual retry from the UI, the only way out of the failed state. It acts on the
+// failed job's error class: a stage that can simply run again goes back in the queue and keeps the
+// run (the returned id is runID); a script of the wrong length starts a rewrite run instead, because
+// running the voice stage again on the same script would fail the same way (the returned id is the
+// new run). A person chose this, so it is not limited by MaxAutoRewrites.
+func (q *Queue) Resume(ctx context.Context, runID int64) (int64, error) {
+	resumed := runID
+	err := pgx.BeginFunc(ctx, q.DB, func(tx pgx.Tx) error {
 		var state RunState
 		if err := tx.QueryRow(ctx, `SELECT state FROM workflow_runs WHERE id = $1 FOR UPDATE`, runID).Scan(&state); err != nil {
 			return err
 		}
 		if state != RunFailed {
-			return fmt.Errorf("run is %s, only failed runs can be retried", state)
+			return conflictf("run is %s, only failed runs can be retried", state)
 		}
 		var jobID int64
 		var cur State
-		if err := tx.QueryRow(ctx, `SELECT id, state FROM jobs WHERE run_id = $1 AND state = $2 ORDER BY seq DESC LIMIT 1 FOR UPDATE`, runID, Failed).Scan(&jobID, &cur); err != nil {
+		var class, msg *string
+		if err := tx.QueryRow(ctx, `SELECT id, state, error_class, error_message FROM jobs WHERE run_id = $1 AND state = $2 ORDER BY seq DESC LIMIT 1 FOR UPDATE`, runID, Failed).Scan(&jobID, &cur, &class, &msg); err != nil {
+			return err
+		}
+		if class != nil && ErrorClass(*class).Remedy() == RewriteScript {
+			var exists bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM workflow_runs WHERE parent_run_id = $1 AND kind = 'rewrite')`, runID).Scan(&exists); err != nil {
+				return err
+			}
+			if exists {
+				return conflictf("run %d was already rewritten", runID)
+			}
+			var err error
+			resumed, err = q.startRewrite(ctx, tx, runID, *msg)
 			return err
 		}
 		if err := Transition(cur, Queued); err != nil {
@@ -287,4 +372,5 @@ func (q *Queue) RetryFailed(ctx context.Context, runID int64) error {
 		_, err := tx.Exec(ctx, `UPDATE workflow_runs SET state = $1, finished_at = NULL, cancel_requested = false WHERE id = $2`, RunRunning, runID)
 		return err
 	})
+	return resumed, err
 }

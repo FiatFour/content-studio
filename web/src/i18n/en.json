@@ -154,5 +154,8 @@
   "state.ready_for_review": "ready_for_review",
   "state.qa_passed": "qa_passed",
   "state.qa_failed": "qa_failed",
-  "state.valid": "valid"
+  "state.valid": "valid",
+  "run.rewrite": "Rewrite",
+  "episode.rewriteOf": "Rewrite of run #{id}",
+  "episode.rewriteWhy": "Feedback sent to the scriptwriter"
 }

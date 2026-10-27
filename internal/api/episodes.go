@@ -42,7 +42,8 @@ type jobDetail struct {
 type runDetail struct {
 	ID          int64       `json:"id"`
 	Kind        string      `json:"kind"`
-	SourceRunID *int64      `json:"source_run_id"`
+	ParentRunID *int64      `json:"parent_run_id"`
+	Feedback    *string     `json:"feedback"`
 	State       string      `json:"state"`
 	CreatedAt   time.Time   `json:"created_at"`
 	FinishedAt  *time.Time  `json:"finished_at"`
@@ -51,14 +52,14 @@ type runDetail struct {
 }
 
 func (s *Server) loadRuns(ctx context.Context, episodeID int64, limit int) ([]runDetail, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, kind, source_run_id, state, created_at, finished_at FROM workflow_runs
+	rows, err := s.DB.Query(ctx, `SELECT id, kind, parent_run_id, feedback, state, created_at, finished_at FROM workflow_runs
 		WHERE episode_id = $1 ORDER BY id DESC LIMIT $2`, episodeID, limit)
 	if err != nil {
 		return nil, err
 	}
 	runs, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (runDetail, error) {
 		var d runDetail
-		err := r.Scan(&d.ID, &d.Kind, &d.SourceRunID, &d.State, &d.CreatedAt, &d.FinishedAt)
+		err := r.Scan(&d.ID, &d.Kind, &d.ParentRunID, &d.Feedback, &d.State, &d.CreatedAt, &d.FinishedAt)
 		return d, err
 	})
 	if err != nil {

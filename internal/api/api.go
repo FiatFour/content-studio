@@ -86,7 +86,10 @@ func (s *Server) errorHandler(err error, c echo.Context) {
 	var ae *apiError
 	var he *echo.HTTPError
 	var refused *review.ErrRefused
+	var conflict *jobs.ConflictError
 	switch {
+	case errors.As(err, &conflict):
+		status, msg = http.StatusConflict, conflict.Msg
 	case errors.As(err, &ae):
 		status, msg = ae.status, ae.msg
 	case errors.As(err, &refused):
@@ -180,10 +183,7 @@ func (s *Server) cancelRun(c echo.Context) error {
 		return err
 	}
 	if err := s.Queue.RequestCancel(c.Request().Context(), id); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return err
-		}
-		return fail(http.StatusConflict, "run cannot be cancelled now")
+		return err
 	}
 	return c.JSON(http.StatusOK, map[string]bool{"ok": true})
 }
@@ -193,16 +193,14 @@ func (s *Server) retryRun(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := s.Queue.RetryFailed(c.Request().Context(), id); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return err
-		}
-		return fail(http.StatusConflict, "only a failed run can be retried")
+	runID, err := s.Queue.Resume(c.Request().Context(), id)
+	if err != nil {
+		return err
 	}
-	return c.JSON(http.StatusOK, map[string]bool{"ok": true})
+	return c.JSON(http.StatusOK, map[string]any{"ok": true, "run_id": runID})
 }
 
-// rerender starts a render+QA run from the latest run whose subtitles stage completed.
+// rerender starts a render+QA run from the latest full or rewrite run whose subtitles stage completed.
 func (s *Server) rerender(c echo.Context) error {
 	id, err := idParam(c)
 	if err != nil {
@@ -211,7 +209,7 @@ func (s *Server) rerender(c echo.Context) error {
 	ctx := c.Request().Context()
 	var src int64
 	err = s.DB.QueryRow(ctx, `SELECT r.id FROM workflow_runs r JOIN jobs j ON j.run_id = r.id
-		WHERE r.episode_id = $1 AND r.kind = 'full' AND j.stage = 'subtitles' AND j.state = 'completed' ORDER BY r.id DESC LIMIT 1`, id).Scan(&src)
+		WHERE r.episode_id = $1 AND r.kind IN ('full', 'rewrite') AND j.stage = 'subtitles' AND j.state = 'completed' ORDER BY r.id DESC LIMIT 1`, id).Scan(&src)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fail(http.StatusConflict, "no finished script, images and audio to re-render from")
 	}

@@ -94,7 +94,7 @@ Tables (key columns only):
 The job state enum and transition table follow `jobs.md`, enforced in one Go function.
 
 Stages, run sequentially by one worker:
-`script → images → tts → subtitles → render → qa`. After QA passes, the run waits for review (`waiting_for_human`). **Export** is an explicit user action that re-hashes the file against the approval. It is not an automatic stage.
+`script → tts → images → subtitles → render → qa`. After QA passes, the run waits for review (`waiting_for_human`). **Export** is an explicit user action that re-hashes the file against the approval. It is not an automatic stage.
 A stage counts as completed only after its artifact file is written (temp file → fsync → rename) and its row is committed in the same transaction as the job's `completed` transition.
 
 ## 4. Top 5 technical risks

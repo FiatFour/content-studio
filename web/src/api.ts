@@ -35,7 +35,7 @@ export type Job = {
   started_at: string | null; finished_at: string | null; updated_at: string;
 };
 export type Run = {
-  id: number; kind: "full" | "rerender"; source_run_id: number | null; state: string; created_at: string;
+  id: number; kind: "full" | "rerender" | "rewrite"; parent_run_id: number | null; feedback: string | null; state: string; created_at: string;
   finished_at: string | null; stages: string[]; jobs: Job[];
 };
 export type EpisodeSummary = { id: number; number: number; title: string; target_duration_s: number; created_at: string; latest_run: Run | null };

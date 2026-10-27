@@ -1,4 +1,4 @@
-// Package pipeline implements the Fictional Series stages: script, images, tts, subtitles, render, qa.
+// Package pipeline implements the Fictional Series stages: script, tts, images, subtitles, render, qa.
 package pipeline
 
 import (
@@ -21,7 +21,7 @@ import (
 // FictionalSeries is the M1a profile: plain data, as product.md asks until a second profile exists.
 var FictionalSeries = jobs.Plan{
 	Profile:  "fictional_series",
-	Full:     []string{"script", "images", "tts", "subtitles", "render", "qa"},
+	Full:     []string{"script", "tts", "images", "subtitles", "render", "qa"},
 	Rerender: []string{"render", "qa"},
 }
 
@@ -67,6 +67,13 @@ type Episode struct {
 	TargetDurationS int
 }
 
+// runFeedback is the note an automatic rewrite left for the scriptwriter; empty for an ordinary run.
+func (d *Deps) runFeedback(ctx context.Context, runID int64) (string, error) {
+	var f string
+	err := d.DB.QueryRow(ctx, `SELECT coalesce(feedback, '') FROM workflow_runs WHERE id = $1`, runID).Scan(&f)
+	return f, err
+}
+
 func (d *Deps) episode(ctx context.Context, id int64) (Episode, error) {
 	var e Episode
 	err := d.DB.QueryRow(ctx, `SELECT id, project_id, number, title, idea, target_duration_s FROM episodes WHERE id = $1`, id).
@@ -77,13 +84,13 @@ func (d *Deps) episode(ctx context.Context, id int64) (Episode, error) {
 // inputRun is the run whose script, images, audio and subtitles this job uses. A re-render
 // reuses the outputs of the full run it was started from.
 func (d *Deps) inputRun(ctx context.Context, j *jobs.Job) (int64, error) {
-	runID, kind, src := j.RunID, j.RunKind, j.SourceRunID
+	runID, kind, src := j.RunID, j.RunKind, j.ParentRunID
 	for kind == "rerender" {
 		if src == nil {
 			return 0, fmt.Errorf("rerender run %d has no source run", runID)
 		}
 		runID = *src
-		if err := d.DB.QueryRow(ctx, `SELECT kind, source_run_id FROM workflow_runs WHERE id = $1`, runID).Scan(&kind, &src); err != nil {
+		if err := d.DB.QueryRow(ctx, `SELECT kind, parent_run_id FROM workflow_runs WHERE id = $1`, runID).Scan(&kind, &src); err != nil {
 			return 0, err
 		}
 	}

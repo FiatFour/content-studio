@@ -107,13 +107,19 @@ func (s *Script) Character(id string) (Character, bool) {
 	return Character{}, false
 }
 
-// Dialogue length per second of target episode. VoxCPM2 Thai speech measured 11.6 characters per
-// second in the first real run (350 characters gave 30 s), and pauses, lead and tail take about
-// 10 s of a 60 s episode. A script outside this range cannot land within the +-10% duration gate.
+// Cheap pre-checks on dialogue length per second of target episode, so a clearly too short script is
+// rejected and re-prompted in the script stage before any voice work. Real speech speed varies by
+// script (11.6 to 15.7 characters per second in four real runs), so the length that counts is measured
+// from the audio in the voice stage (see dialogueFit). The 8B model ignores character totals but
+// follows structure, so the real lever is minLinesPerShot.
 const (
-	minCharsPerSecond = 8.0
-	maxCharsPerSecond = 11.0
+	minCharsPerSecond = 9.0
+	maxCharsPerSecond = 18.0
+	minLinesPerShot   = 1.7
 )
+
+// firstGuessCharsPerSecond sets how much dialogue the first prompt asks for per second of target.
+const firstGuessCharsPerSecond = 12
 
 // bannedInPrompts keeps existing shows and studios out of image prompts (product.md: originality).
 var bannedInPrompts = []string{"simpson", "family guy", "futurama", "south park", "bob's burgers", "rick and morty",
@@ -144,6 +150,9 @@ func ValidateScript(raw []byte, targetSeconds int) (*Script, error) {
 	minShots, maxShots := int(math.Ceil(float64(targetSeconds)/12)), int(math.Ceil(float64(targetSeconds)/4))
 	if len(shots) < minShots || len(shots) > maxShots {
 		return nil, fmt.Errorf("script has %d shots; a %d s episode needs %d to %d", len(shots), targetSeconds, minShots, maxShots)
+	}
+	if minLines := int(math.Ceil(minLinesPerShot * float64(len(shots)))); len(lines) < minLines {
+		return nil, fmt.Errorf("script has only %d dialogue lines in %d shots. Give almost every shot two lines, a spoken exchange between two characters, so there are at least %d lines in total", len(lines), len(shots), minLines)
 	}
 	chars := 0
 	for _, l := range lines {
@@ -200,10 +209,10 @@ func sha256Hex(b []byte) string {
 	return hex.EncodeToString(h[:])
 }
 
-const scriptPromptVersion = 1
+const scriptPromptVersion = 3
 
-func scriptPrompt(e Episode) string {
-	return fmt.Sprintf(`You write one episode of an ORIGINAL adult-animated life-simulation sitcom for a vertical phone video.
+func scriptPrompt(e Episode, feedback string) string {
+	p := fmt.Sprintf(`You write one episode of an ORIGINAL adult-animated life-simulation sitcom for a vertical phone video.
 Episode title: %s
 Idea: %s
 Target length: %d seconds of finished video.
@@ -214,11 +223,16 @@ Rules:
 - About %d to %d shots in total. Each shot is one illustrated still with a camera move.
 - "image_prompt" describes only what is visible in that shot: who, action, expression, place. No text, signs or logos in the picture.
 - Never name existing shows, studios or characters.
-- Write at least %d dialogue lines in total, each 30 to 80 Thai characters, so the whole dialogue is roughly %d Thai characters. Short one-line replies are not enough: characters talk in full sentences. A shot may have no lines.
+- Every shot has exactly 2 dialogue lines, two characters answering each other, except that one shot may be silent. Each line is a full spoken sentence of 40 to 70 Thai characters, so the whole dialogue is roughly %d Thai characters. One short reply per shot is not enough.
 - Comedy first, with a small warm or wry ending beat.
 Return only the JSON object.`, e.Title, e.Idea, e.TargetDurationS,
 		int(math.Ceil(float64(e.TargetDurationS)/9)), int(math.Ceil(float64(e.TargetDurationS)/5)),
-		int(math.Ceil(float64(e.TargetDurationS)/5)), int(float64(e.TargetDurationS)*9))
+		e.TargetDurationS*firstGuessCharsPerSecond)
+	if feedback != "" {
+		p += "\n\nMeasured feedback from the previous version of this episode, which was too " +
+			"short or too long when spoken. Follow its character count instead of the earlier estimate: " + feedback
+	}
+	return p
 }
 
 type scriptStage struct{ d *Deps }
@@ -236,7 +250,11 @@ func (s *scriptStage) Run(ctx context.Context, j *jobs.Job, progress func(int, i
 	if err := d.Queue.SetProvider(ctx, j.ID, info.Provider, info.Model); err != nil {
 		return nil, err
 	}
-	base := scriptPrompt(e)
+	feedback, err := d.runFeedback(ctx, j.RunID)
+	if err != nil {
+		return nil, err
+	}
+	base := scriptPrompt(e, feedback)
 	prompt := base
 	tries := max(d.Settings.ScriptRetries, 1)
 	var lastErr error
