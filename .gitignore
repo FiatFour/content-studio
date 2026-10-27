@@ -1,0 +1,10 @@
+/bin/
+/var/
+.env
+*.local
+node_modules/
+web/dist/
+__pycache__/
+.venv/
+*.mp4
+*.wav

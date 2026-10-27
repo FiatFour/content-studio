@@ -1,0 +1,128 @@
+package jobs
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+)
+
+// Stage does one stage's work for a claimed job. It writes its files, then returns persist,
+// which records the stage's artifact rows inside the transaction that completes the job.
+type Stage interface {
+	Run(ctx context.Context, j *Job, progress func(done, total int)) (persist func(pgx.Tx) error, err error)
+}
+
+type Worker struct {
+	Queue        *Queue
+	Stages       map[string]Stage
+	Log          *slog.Logger
+	PollInterval time.Duration
+	RetryDelay   time.Duration
+}
+
+func retryable(c ErrorClass) bool {
+	switch c {
+	case ErrTransientNetwork, ErrValidationFailed, ErrInsufficientLocal, ErrWorkerRestart:
+		return true
+	}
+	return false
+}
+
+// Run processes jobs one at a time until ctx ends. One worker means one GPU-heavy stage at a time.
+func (w *Worker) Run(ctx context.Context) error {
+	n, err := w.Queue.RecoverInterrupted(ctx)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		w.Log.Warn("recovered interrupted jobs", "count", n)
+	}
+	for {
+		if ctx.Err() != nil {
+			return nil
+		}
+		ran, err := w.RunOne(ctx)
+		if err != nil && ctx.Err() == nil {
+			w.Log.Error("worker step failed", "err", err)
+		}
+		if !ran {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-time.After(w.PollInterval):
+			}
+		}
+	}
+}
+
+// RunOne claims and runs a single job. It reports whether a job was found.
+func (w *Worker) RunOne(ctx context.Context) (bool, error) {
+	j, err := w.Queue.Claim(ctx)
+	if errors.Is(err, ErrNoJob) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	log := w.Log.With("job_id", j.ID, "run_id", j.RunID, "stage", j.Stage, "attempt", j.Attempt)
+	log.Info("job state", "state", Running)
+	stage, ok := w.Stages[j.Stage]
+	if !ok {
+		return true, w.Queue.Fail(ctx, j, Errorf(ErrUnsupported, nil, "no implementation for stage %s", j.Stage), false, 0)
+	}
+
+	stageCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go w.watchCancel(stageCtx, cancel, j.RunID)
+
+	start := time.Now()
+	persist, err := stage.Run(stageCtx, j, func(done, total int) {
+		if perr := w.Queue.SetProgress(ctx, j.ID, done, total); perr != nil {
+			log.Warn("progress update failed", "err", perr)
+		}
+	})
+	if ctx.Err() != nil {
+		// The worker itself is shutting down: leave the job running so RecoverInterrupted handles it.
+		return true, ctx.Err()
+	}
+	if err == nil {
+		if err := w.Queue.Complete(ctx, j, persist); err != nil {
+			return true, err
+		}
+		log.Info("job state", "state", Completed, "duration_s", time.Since(start).Seconds())
+		return true, nil
+	}
+	se := classify(err)
+	if c, _ := w.Queue.CancelRequested(ctx, j.RunID); c {
+		se = &StageError{Class: ErrCancelled, Message: "cancelled by user"}
+	}
+	log.Warn("job failed", "error_class", se.Class, "err", err, "duration_s", time.Since(start).Seconds())
+	return true, w.Queue.Fail(ctx, j, se, retryable(se.Class), w.RetryDelay)
+}
+
+func classify(err error) *StageError {
+	var se *StageError
+	if errors.As(err, &se) {
+		return se
+	}
+	return &StageError{Class: ErrInternal, Message: "internal error in stage", Err: err}
+}
+
+func (w *Worker) watchCancel(ctx context.Context, cancel context.CancelFunc, runID int64) {
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if c, err := w.Queue.CancelRequested(ctx, runID); err == nil && c {
+				cancel()
+				return
+			}
+		}
+	}
+}

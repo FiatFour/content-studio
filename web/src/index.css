@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0B1424;
+  --color-panel: #111D33;
+  --color-inner: #0E1A30;
+  --color-line: #233657;
+  --color-ink: #EAF0FA;
+  --color-muted: #9DB0CC;
+  --color-blue: #4DA3FF;
+  --color-green: #34D399;
+  --color-amber: #F5B942;
+  --color-red: #FF8A7A;
+  --color-badge-red: #E5484D;
+  --color-outline: #1B1B1B;
+  --color-agent-script: #F28DB2;
+  --color-agent-art: #59C9B9;
+  --color-agent-voice: #B49AF2;
+  --color-agent-render: #F2C94C;
+  --color-agent-qa: #F29B5C;
+  --color-agent-review: #E9573F;
+  --color-agent-guard: #9FBF8F;
+  --font-sans: "IBM Plex Sans Thai", system-ui, sans-serif;
+  --font-display: "Bricolage Grotesque", "IBM Plex Sans Thai", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+html, body, #root { min-height: 100%; }
+body { margin: 0; background: var(--color-bg); color: var(--color-ink); font-family: var(--font-sans); }
+
+.card { background: var(--color-panel); border: 2px solid var(--color-line); border-radius: 16px; padding: 16px; box-shadow: 4px 4px 0 var(--color-outline); }
+.inner { background: var(--color-inner); border: 1px solid var(--color-line); border-radius: 12px; padding: 12px; }
+.btn { min-height: 44px; min-width: 44px; padding: 0 16px; border-radius: 12px; border: 2px solid var(--color-outline); background: var(--color-inner); color: var(--color-ink); font-weight: 600; cursor: pointer; }
+.btn:hover:not(:disabled) { border-color: var(--color-blue); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--color-amber); color: #1B1B1B; box-shadow: 3px 3px 0 var(--color-outline); }
+.btn-danger { color: var(--color-red); }
+.field { width: 100%; min-height: 44px; border-radius: 10px; border: 2px solid var(--color-line); background: var(--color-inner); color: var(--color-ink); padding: 8px 12px; font: inherit; }
+.field:focus-visible, .btn:focus-visible, a:focus-visible { outline: 3px solid var(--color-blue); outline-offset: 2px; }
+.mono { font-family: var(--font-mono); }
+.muted { color: var(--color-muted); }

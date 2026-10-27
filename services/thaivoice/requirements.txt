@@ -1,0 +1,4 @@
+voxcpm==2.0.3
+pythainlp==5.4.0
+soundfile==0.14.0
+# torch 2.11.0 from https://download.pytorch.org/whl/cu128
