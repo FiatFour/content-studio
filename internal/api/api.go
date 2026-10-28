@@ -1,10 +1,8 @@
-// Package api is the HTTP API the web UI uses. It binds to localhost only, and every mutating
-// endpoint requires the admin token.
+// Package api is the HTTP API the web UI uses. It binds to localhost only and has no authentication in M1a.
 package api
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -29,7 +27,6 @@ type Server struct {
 	Queue       *jobs.Queue
 	Store       *artifacts.Store
 	Review      *review.Service
-	AdminToken  string
 	StorageRoot string
 	WebDir      string
 	Log         *slog.Logger
@@ -51,15 +48,13 @@ func (s *Server) Echo() *echo.Echo {
 	a.GET("/artifacts/:id/content", s.artifactContent)
 	a.GET("/videos/:id/review", s.videoReview)
 
-	m := a.Group("", s.requireToken)
-	m.GET("/auth/check", func(c echo.Context) error { return c.JSON(http.StatusOK, map[string]bool{"ok": true}) })
-	m.PUT("/settings", s.putSettings)
-	m.POST("/episodes", s.createEpisode)
-	m.POST("/episodes/:id/rerender", s.rerender)
-	m.POST("/runs/:id/cancel", s.cancelRun)
-	m.POST("/runs/:id/retry", s.retryRun)
-	m.POST("/videos/:id/decision", s.decide)
-	m.POST("/videos/:id/export", s.export)
+	a.PUT("/settings", s.putSettings)
+	a.POST("/episodes", s.createEpisode)
+	a.POST("/episodes/:id/rerender", s.rerender)
+	a.POST("/runs/:id/cancel", s.cancelRun)
+	a.POST("/runs/:id/retry", s.retryRun)
+	a.POST("/videos/:id/decision", s.decide)
+	a.POST("/videos/:id/export", s.export)
 
 	if s.WebDir != "" {
 		e.GET("/*", s.spa)
@@ -114,17 +109,6 @@ func (s *Server) logRequests(next echo.HandlerFunc) echo.HandlerFunc {
 			s.Log.Info("request", "method", c.Request().Method, "path", c.Path(), "status", c.Response().Status)
 		}
 		return err
-	}
-}
-
-func (s *Server) requireToken(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		got := strings.TrimPrefix(c.Request().Header.Get("Authorization"), "Bearer ")
-		if s.AdminToken == "" || subtle.ConstantTimeCompare([]byte(got), []byte(s.AdminToken)) != 1 {
-			s.Log.Warn("auth failure", "method", c.Request().Method, "path", c.Path())
-			return fail(http.StatusUnauthorized, "admin token required")
-		}
-		return next(c)
 	}
 }
 

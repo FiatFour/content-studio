@@ -3,7 +3,7 @@
 ## Security by milestone
 **M1a (localhost only):**
 - Bind every service to 127.0.0.1.
-- A single admin token protects all mutating endpoints (approve, export, cancel, delete, settings).
+- No authentication in M1a (owner decision 2026-10-28: the admin token was removed). Any local process can call approve and export, so the localhost binding is the only protection. A web page open in the owner's browser could also reach the API; add auth before relying on approval for anything beyond a solo local machine.
 - Parameterized SQL only.
 - Request validation on every endpoint; no mass assignment (explicit request structs).
 - Safe error responses (no stack traces or paths to the client).

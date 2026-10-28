@@ -1,4 +1,4 @@
-// Package config reads settings from the environment. Secrets (the admin token) are never logged.
+// Package config reads settings from the environment. Secrets are never logged.
 package config
 
 import (
@@ -13,7 +13,6 @@ import (
 type Config struct {
 	DatabaseURL string
 	Addr        string
-	AdminToken  string
 	StorageRoot string
 	ExportDir   string
 	WebDir      string
@@ -48,7 +47,6 @@ func Load() (Config, error) {
 	c := Config{
 		DatabaseURL: env("STUDIO_DATABASE_URL", "postgres://studio:studio@127.0.0.1:5433/studio"),
 		Addr:        env("STUDIO_ADDR", "127.0.0.1:8080"),
-		AdminToken:  os.Getenv("STUDIO_ADMIN_TOKEN"),
 		StorageRoot: env("STUDIO_STORAGE_ROOT", "var/storage"),
 		ExportDir:   env("STUDIO_EXPORT_DIR", "var/exports"),
 		WebDir:      env("STUDIO_WEB_DIR", "web/dist"),

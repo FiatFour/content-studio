@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, ApiError, contentUrl, getToken, type ArtifactRow, type Run, type VideoVersion } from "../api";
+import { api, ApiError, contentUrl, type ArtifactRow, type Run, type VideoVersion } from "../api";
 import { usePoll } from "../hooks";
 import { useI18n, type Key } from "../i18n";
 import { Bar, Card, StateBadge, agentColor, fmtBytes, fmtTime } from "../ui";
@@ -13,9 +13,8 @@ export function EpisodeDetail({ id }: { id: number }) {
   const arts = usePoll<{ artifacts: ArtifactRow[] }>(run ? `/runs/${run.id}/artifacts` : null, 2500);
   const [msg, setMsg] = useState("");
   const act = async (path: string) => {
-    if (!getToken()) { setMsg(t("auth.missing")); return; }
     try { await api(path, { method: "POST" }); setMsg(""); d.reload(); }
-    catch (x) { setMsg(x instanceof ApiError ? (x.status === 401 ? t("auth.rejected") : x.message) : t("app.error")); }
+    catch (x) { setMsg(x instanceof ApiError ? x.message : t("app.error")); }
   };
   if (!d.data) return <Card>{d.error ? <p role="alert" className="text-red">{d.error.message}</p> : t("app.loading")}</Card>;
   const { episode: e, videos } = d.data;
