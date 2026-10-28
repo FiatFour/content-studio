@@ -14,17 +14,17 @@ Primary: the web UI (hash routes `#/`, `#/episodes`, `#/episodes/<id>`, `#/revie
 ## Launch
 
 1. One-time: `$SK/scripts/setup-browser.sh`. It installs Playwright 1.63 and Chromium into `var/verify/tools` and unpacks `libnss3`/`libnspr4` without sudo. Playwright older than 1.63 has no build for this Ubuntu.
-2. `E=$($SK/scripts/launch.sh)`. It creates database `verify_<id>` in the `studio-pg` container, builds and starts `server` on a free loopback port with its own token and storage, and prints the env file path. Ready means `/api/health` is ok. Migrations ran on start.
+2. `E=$($SK/scripts/launch.sh)`. It creates database `verify_<id>` in the `studio-pg` container, builds and starts `server` on a free loopback port with its own storage, and prints the env file path. Ready means `/api/health` is ok. Migrations ran on start.
 
 The instance has no worker and no models, so it uses no GPU and an episode stays `queued`. Two instances can run side by side (own port, own database). Never drive `127.0.0.1:8080`: that is the user's live stack with real data and a GPU job possibly running.
 
 ## Doctor
 
-`$SK/scripts/doctor.sh $E` is read-only. It checks the pid is alive and owns the port, health is ok, a mutation without a token gets 401, the token works, the UI is served, and the database exists. Run it first, and again whenever a flow behaves oddly.
+`$SK/scripts/doctor.sh $E` is read-only. It checks the pid is alive and owns the port, health is ok, an empty POST gets 400 (no auth wall), the UI is served, and the database exists. Run it first, and again whenever a flow behaves oddly.
 
 ## Drive
 
-`node $SK/scripts/drive.mjs $E <flow>` with flow `shell`, `token` or `create-episode`. Exit 0 means all checks passed. Feature recipes and the handles they use are in `$SK/features/README.md`. Add a flow to `drive.mjs` and a feature file together.
+`node $SK/scripts/drive.mjs $E <flow>` with flow `shell` or `create-episode`. Exit 0 means all checks passed. Feature recipes and the handles they use are in `$SK/features/README.md`. Add a flow to `drive.mjs` and a feature file together.
 
 ## Evidence
 

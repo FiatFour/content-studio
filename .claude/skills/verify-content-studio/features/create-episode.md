@@ -11,7 +11,7 @@ A user fills the episode form and starts a run. They land on the episode page, a
 
 ## How to get to it (user POV)
 
-- Open `$URL/#/episodes`, set the token, fill `Episode title`, `Idea` and `Target length (seconds)`, press `Start episode`.
+- Open `$URL/#/episodes`, fill `Episode title`, `Idea` and `Target length (seconds)`, press `Start episode`.
 
 ## Driving it with drive.mjs
 
@@ -27,4 +27,3 @@ Preconditions:
 
 - Do not start a worker against this database. It would call the real Ollama/ComfyUI and use the GPU. Use the user's live stack for pipeline checks instead.
 - The idea must be at least 10 characters and the length 60 to 120. The backend returns 400 otherwise.
-- The form needs the token set first (`auth.missing` message otherwise).

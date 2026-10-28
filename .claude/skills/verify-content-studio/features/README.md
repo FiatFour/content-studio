@@ -6,7 +6,7 @@ Maintained source for verifying the user-facing behavior of the studio web UI. R
 
 - Postgres container `studio-pg` is running (`docker start studio-pg`).
 - Browser tooling is set up once with `scripts/setup-browser.sh`.
-- Launch an ISOLATED instance with `scripts/launch.sh`. It prints an env file path, called `$E` below. The instance has its own port, throwaway database, storage and admin token. It has no worker and no AI models, so it never touches the GPU and a new episode stays `queued`.
+- Launch an ISOLATED instance with `scripts/launch.sh`. It prints an env file path, called `$E` below. The instance has its own port, throwaway database and storage. It has no worker and no AI models, so it never touches the GPU and a new episode stays `queued`.
 - Run `scripts/doctor.sh $E` and require `doctor ok` before driving.
 - Never drive the user's own `make dev` stack on `127.0.0.1:8080`. It shares one database and one GPU.
 
@@ -27,6 +27,5 @@ Maintained source for verifying the user-facing behavior of the studio web UI. R
 ## Features
 
 - [Shell and language](./shell-and-language.md): Thai default, TH/EN switch stored in the backend, inert "Not implemented" menu items. Flow `shell`.
-- [Admin token](./admin-token.md): wrong token rejected, right token accepted, API refuses mutations without it. Flow `token`.
 - [Create an episode](./create-episode.md): form to episode page to queued first stage, with the stored row checked. Flow `create-episode`.
 - [Review, approve and export](./review-and-export.md): NOT yet driven by any flow; needs a video that passed QA.
