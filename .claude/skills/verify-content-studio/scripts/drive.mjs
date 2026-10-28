@@ -1,5 +1,5 @@
 // Drives the isolated studio UI in headless Chromium the way a user would, and writes evidence.
-// usage: node drive.mjs <env file> <flow>      flows: shell | token | create-episode
+// usage: node drive.mjs <env file> <flow>      flows: shell | create-episode
 // Every visible string comes from web/src/i18n/{th,en}.json, so a renamed label breaks the flow
 // loudly instead of silently passing. Exit code 0 only if every assertion held.
 import { createRequire } from "node:module";
@@ -18,16 +18,10 @@ const t = (lang, key, vars = {}) => dict[lang][key].replace(/\{(\w+)\}/g, (_, k)
 const evidence = `${root}/${env.DIR}/evidence/${flow}`;
 mkdirSync(evidence, { recursive: true });
 
-const api = (path, init = {}) => fetch(`${env.URL}/api${path}`, { ...init, headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.TOKEN}`, ...init.headers } }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => null) }));
+const api = (path, init = {}) => fetch(`${env.URL}/api${path}`, { ...init, headers: { "Content-Type": "application/json", ...init.headers } }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => null) }));
 const log = [];
 const check = (name, ok, detail = "") => { log.push({ name, ok: !!ok, detail }); console.log(`${ok ? "PASS" : "FAIL"} ${name} ${detail}`); };
 const expectVisible = async (name, locator) => { try { await locator.first().waitFor({ state: "visible", timeout: 8000 }); check(name, true); } catch { check(name, false, "not visible within 8 s"); } };
-
-async function setToken(page, lang, token) {
-  await page.getByRole("button", { name: t(lang, "auth.token") }).click();
-  await page.getByLabel(t(lang, "auth.token")).fill(token);
-  await page.getByRole("button", { name: t(lang, "auth.save") }).click();
-}
 
 const flows = {
   // Thai is the default; the nav lists live pages as links and later milestones as inert tagged items.
@@ -41,7 +35,6 @@ const flows = {
       const label = `${t("th", tag)} · ${t("th", "app.notImplemented")}`;
       check(`${key} is tagged "${label}"`, (await nav.getByText(label, { exact: true }).count()) > 0);
     }
-    await setToken(page, "th", env.TOKEN);
     await page.getByRole("button", { name: "EN", exact: true }).click();
     await expectVisible("English nav link after switching", page.getByRole("navigation", { name: "menu" }).getByRole("link", { name: t("en", "menu.episodes") }));
     await page.reload();
@@ -50,24 +43,11 @@ const flows = {
     check("language stored in the backend", s.body?.ui_lang === "en", JSON.stringify(s.body));
   },
 
-  async token(page) {
-    await api("/settings", { method: "PUT", body: JSON.stringify({ ui_lang: "en" }) });
-    await page.goto(`${env.URL}/#/episodes`);
-    await setToken(page, "en", "definitely-wrong");
-    await expectVisible("wrong token is rejected with a visible message", page.getByRole("alert").filter({ hasText: t("en", "auth.rejected") }));
-    await page.getByLabel(t("en", "auth.token")).fill(env.TOKEN);
-    await page.getByRole("button", { name: t("en", "auth.save") }).click();
-    try { await page.getByLabel(t("en", "auth.token")).waitFor({ state: "hidden", timeout: 8000 }); check("right token closes the box", true); } catch { check("right token closes the box", false); }
-    const noTok = await fetch(`${env.URL}/api/episodes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-    check("the API refuses a mutation without the token", noTok.status === 401, `status ${noTok.status}`);
-  },
-
   // The user path: fill the form, submit, land on the episode page, and see a queued first stage.
   // No worker runs in this instance, so "queued" is the true and stable end state.
   async "create-episode"(page) {
     await api("/settings", { method: "PUT", body: JSON.stringify({ ui_lang: "en" }) });
     await page.goto(`${env.URL}/#/episodes`);
-    await setToken(page, "en", env.TOKEN);
     const title = `verify ${env.ID}`;
     await page.getByLabel(t("en", "episodes.form.title")).fill(title);
     await page.getByLabel(t("en", "episodes.form.idea")).fill("คุณยายหัดใช้สมาร์ทโฟนครั้งแรก");

@@ -42,7 +42,7 @@ cmd/server/        HTTP API
 cmd/worker/        job runner
 internal/
   jobs/            queue, state machine, stages
-  pipeline/        stage implementations (script, images, tts, subs, render, qa)
+  pipeline/        stage implementations (script, tts, images, subs, render, qa)
   providers/       adapters behind small interfaces (+ fakes for tests)
   artifacts/       storage, versioning, hashing
   review/          approval + export

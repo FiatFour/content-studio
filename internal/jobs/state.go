@@ -60,8 +60,31 @@ const (
 	ErrInternal          ErrorClass = "internal"
 	ErrWorkerRestart     ErrorClass = "worker_restart"
 	ErrQAFailed          ErrorClass = "qa_failed"
+	ErrScriptDuration    ErrorClass = "script_duration"
 	ErrCancelled         ErrorClass = "cancelled"
 )
+
+// Remedy is what the queue does when a stage fails with a given error class.
+type Remedy int
+
+const (
+	FailRun Remedy = iota // fail the job and its run; a person decides (the default)
+	RetryStage
+	RewriteScript // fail the run, then start one new run with the message as scriptwriter feedback
+	CancelRun
+)
+
+var remedies = map[ErrorClass]Remedy{
+	ErrTransientNetwork:  RetryStage,
+	ErrValidationFailed:  RetryStage,
+	ErrInsufficientLocal: RetryStage,
+	ErrWorkerRestart:     RetryStage,
+	ErrScriptDuration:    RewriteScript,
+	ErrCancelled:         CancelRun,
+}
+
+// Remedy returns FailRun for any class not in the table, so a new class is safe until it is classified.
+func (c ErrorClass) Remedy() Remedy { return remedies[c] }
 
 // StageError is what a stage returns to say how it failed. Message must already be safe to show.
 type StageError struct {

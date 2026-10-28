@@ -8,11 +8,6 @@ COMFY_DIR=${COMFY_DIR:-$HOME/ai/ComfyUI}
 VOICE_PY=${VOICE_PY:-$HOME/ai/tts/voxcpm/bin/python}
 mkdir -p var/logs var/storage var/exports
 
-if [ ! -s var/admin-token ]; then
-  (umask 077; head -c 24 /dev/urandom | base64 | tr -d '/+=' > var/admin-token)
-fi
-export STUDIO_ADMIN_TOKEN=$(cat var/admin-token)
-
 if ! docker ps --format '{{.Names}}' | grep -qx studio-pg; then
   docker start studio-pg >/dev/null 2>&1 || docker run -d --name studio-pg -e POSTGRES_USER=studio -e POSTGRES_PASSWORD=studio \
     -e POSTGRES_DB=studio -p 127.0.0.1:5433:5432 -v studio-pgdata:/var/lib/postgresql/data postgres:17 >/dev/null
@@ -35,6 +30,5 @@ start worker bin/worker
 
 echo
 echo "Studio:  http://127.0.0.1:8080"
-echo "Admin token (paste it into the top bar): $(cat var/admin-token)"
 echo "Logs in var/logs. Keep the laptop plugged in with sleep off while jobs run."
 wait

@@ -10,11 +10,6 @@
   "app.minutesShort": "min",
   "net.disconnected": "Disconnected from the backend",
   "net.disconnectedHelp": "What you see may be out of date. Reconnecting.",
-  "auth.token": "Admin token",
-  "auth.set": "Set token",
-  "auth.save": "Save token",
-  "auth.missing": "Enter the admin token before using buttons that change data",
-  "auth.rejected": "The server rejected this token",
   "chip.today": "Done today",
   "chip.cpu": "CPU",
   "chip.ram": "RAM",
@@ -154,5 +149,8 @@
   "state.ready_for_review": "ready_for_review",
   "state.qa_passed": "qa_passed",
   "state.qa_failed": "qa_failed",
-  "state.valid": "valid"
+  "state.valid": "valid",
+  "run.rewrite": "Rewrite",
+  "episode.rewriteOf": "Rewrite of run #{id}",
+  "episode.rewriteWhy": "Feedback sent to the scriptwriter"
 }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, ApiError, contentUrl, getToken, type ArtifactRow, type Run, type VideoVersion } from "../api";
+import { api, ApiError, contentUrl, type ArtifactRow, type Run, type VideoVersion } from "../api";
 import { usePoll } from "../hooks";
 import { useI18n, type Key } from "../i18n";
 import { Bar, Card, StateBadge, agentColor, fmtBytes, fmtTime } from "../ui";
@@ -13,9 +13,8 @@ export function EpisodeDetail({ id }: { id: number }) {
   const arts = usePoll<{ artifacts: ArtifactRow[] }>(run ? `/runs/${run.id}/artifacts` : null, 2500);
   const [msg, setMsg] = useState("");
   const act = async (path: string) => {
-    if (!getToken()) { setMsg(t("auth.missing")); return; }
     try { await api(path, { method: "POST" }); setMsg(""); d.reload(); }
-    catch (x) { setMsg(x instanceof ApiError ? (x.status === 401 ? t("auth.rejected") : x.message) : t("app.error")); }
+    catch (x) { setMsg(x instanceof ApiError ? x.message : t("app.error")); }
   };
   if (!d.data) return <Card>{d.error ? <p role="alert" className="text-red">{d.error.message}</p> : t("app.loading")}</Card>;
   const { episode: e, videos } = d.data;
@@ -41,6 +40,11 @@ export function EpisodeDetail({ id }: { id: number }) {
       {msg && <p role="alert" className="mt-2 text-red">{msg}</p>}
       <p className="muted mt-2 text-xs">{t("episode.rerenderHelp")}</p>
     </Card>}
+    {d.data.runs.length > 1 && <Card title={t("episode.runs")}><ul className="flex flex-col gap-2">{d.data.runs.map((r) => { const why = r.jobs.find((j) => j.state === "failed");
+      return <li key={r.id} className="inner"><div className="flex flex-wrap items-center gap-3"><strong>#{r.id}</strong><span>{t(`run.${r.kind}` as Key)}</span><StateBadge state={r.state} />
+        {r.kind === "rewrite" && r.parent_run_id !== null && <span className="muted text-sm">{t("episode.rewriteOf", { id: r.parent_run_id })}</span>}</div>
+        {r.feedback && <p className="muted mt-2 text-sm"><strong>{t("episode.rewriteWhy")}:</strong> {r.feedback}</p>}
+        {why && <p className="mt-2 text-sm text-red"><strong>{t("episode.failedWhy")}:</strong> <span className="mono">{why.error_class}</span> {why.error_message}</p>}</li>; })}</ul></Card>}
     <Card title={t("episode.shots")}>{images.length === 0 ? <p className="muted">{t("episode.noShots")}</p> :
       <ul className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">{images.map((a) => <li key={a.id}><img src={contentUrl(a.id)} alt={a.item_key} loading="lazy" className="aspect-[9/16] w-full rounded-lg border-2 border-outline object-cover" /><div className="mono text-center text-xs">{a.item_key}</div></li>)}</ul>}</Card>
     <Card title={t("episode.videos")}>{videos.length === 0 ? <p className="muted">{t("episode.noVideos")}</p> :

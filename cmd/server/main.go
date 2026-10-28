@@ -33,9 +33,6 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	if cfg.AdminToken == "" {
-		return errors.New("STUDIO_ADMIN_TOKEN must be set")
-	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	db, err := store.Open(ctx, cfg.DatabaseURL)
@@ -52,7 +49,7 @@ func run(log *slog.Logger) error {
 	}
 	srv := &api.Server{
 		DB: db, Queue: &jobs.Queue{DB: db, Plan: pipeline.FictionalSeries, MaxAttempts: cfg.MaxAttempts}, Store: st,
-		Review: &review.Service{DB: db, Store: st, ExportDir: cfg.ExportDir}, AdminToken: cfg.AdminToken, WebDir: cfg.WebDir, Log: log,
+		Review: &review.Service{DB: db, Store: st, ExportDir: cfg.ExportDir}, WebDir: cfg.WebDir, Log: log,
 	}
 	if _, err := os.Stat(cfg.WebDir); err != nil {
 		srv.WebDir = ""

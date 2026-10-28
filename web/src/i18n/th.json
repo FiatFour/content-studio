@@ -10,11 +10,6 @@
   "app.minutesShort": "นาที",
   "net.disconnected": "ขาดการเชื่อมต่อกับระบบหลังบ้าน",
   "net.disconnectedHelp": "ข้อมูลที่เห็นอาจไม่เป็นปัจจุบัน กำลังลองเชื่อมต่อใหม่",
-  "auth.token": "โทเคนผู้ดูแล",
-  "auth.set": "ตั้งโทเคน",
-  "auth.save": "บันทึกโทเคน",
-  "auth.missing": "ใส่โทเคนผู้ดูแลก่อนจึงจะกดปุ่มที่เปลี่ยนแปลงข้อมูลได้",
-  "auth.rejected": "ระบบไม่รับโทเคนนี้",
   "chip.today": "เสร็จวันนี้",
   "chip.cpu": "CPU",
   "chip.ram": "RAM",
@@ -154,5 +149,8 @@
   "state.qa_passed": "qa_passed",
   "state.qa_failed": "qa_failed",
   "state.valid": "valid",
-  "state.pending": "รอคิว"
+  "state.pending": "รอคิว",
+  "run.rewrite": "เขียนบทใหม่",
+  "episode.rewriteOf": "เขียนบทใหม่จากรอบ #{id}",
+  "episode.rewriteWhy": "ข้อเสนอแนะที่ส่งให้นักเขียนบท"
 }

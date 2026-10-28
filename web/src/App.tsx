@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiError, getToken, setToken, type System } from "./api";
+import { api, type System } from "./api";
 import { usePoll } from "./hooks";
 import { I18nProvider, useI18n, type Lang } from "./i18n";
 import { Home } from "./pages/Home";
@@ -44,7 +44,6 @@ function Shell() {
       {chip(t("chip.ram"), s?.ram_total_mib ? `${((s.ram_used_mib ?? 0) / 1024).toFixed(1)}/${(s.ram_total_mib / 1024).toFixed(1)} GB` : t("app.na"))}
       {chip(t("chip.vram"), s?.vram_total_mib ? `${((s.vram_used_mib ?? 0) / 1024).toFixed(1)}/${(s.vram_total_mib / 1024).toFixed(1)} GB` : t("app.na"))}
       {chip(t("chip.cloud"), t("chip.cloudNone"))}
-      <TokenBox />
       <div role="group" aria-label={t("lang.label")} className="flex overflow-hidden rounded-xl border-2 border-outline">
         {(["th", "en"] as const).map((l) => <button key={l} className="btn !rounded-none !border-0" aria-pressed={lang === l} style={{ background: lang === l ? "var(--color-blue)" : undefined, color: lang === l ? "#0B1424" : undefined }} onClick={() => setLang(l)}>{l.toUpperCase()}</button>)}
       </div>
@@ -70,26 +69,4 @@ function Shell() {
 
 function StateLine({ text, ok }: { text: string; ok?: boolean }) {
   return <div className={`mono mt-1 flex items-center gap-2 ${ok ? "text-green" : "muted"}`}><span aria-hidden className="h-2.5 w-2.5 rounded-full bg-current" />{text}</div>;
-}
-
-function TokenBox() {
-  const { t } = useI18n();
-  const [open, setOpen] = useState(false);
-  const [val, setVal] = useState("");
-  const [msg, setMsg] = useState("");
-  const have = getToken() !== "";
-  const save = async () => {
-    setToken(val.trim());
-    try { await api("/auth/check"); setMsg(""); setOpen(false); setVal(""); }
-    catch (e) { setMsg(e instanceof ApiError && e.status === 401 ? t("auth.rejected") : t("app.error")); }
-  };
-  return <div className="relative">
-    <button className="btn" aria-expanded={open} onClick={() => setOpen(!open)}>{have ? "🔑" : "⚠"} {t("auth.token")}</button>
-    {open && <div className="card absolute right-0 z-10 mt-2 w-72">
-      <label className="mb-1 block text-sm" htmlFor="tok">{t("auth.token")}</label>
-      <input id="tok" type="password" className="field mono" value={val} onChange={(e) => setVal(e.target.value)} autoComplete="off" />
-      {msg && <p role="alert" className="mt-2 text-sm text-red">{msg}</p>}
-      <div className="mt-3 flex gap-2"><button className="btn btn-primary" onClick={() => void save()}>{t("auth.save")}</button><button className="btn" onClick={() => setOpen(false)}>{t("app.close")}</button></div>
-    </div>}
-  </div>;
 }

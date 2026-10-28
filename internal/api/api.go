@@ -1,10 +1,8 @@
-// Package api is the HTTP API the web UI uses. It binds to localhost only, and every mutating
-// endpoint requires the admin token.
+// Package api is the HTTP API the web UI uses. It binds to localhost only and has no authentication in M1a.
 package api
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -29,7 +27,6 @@ type Server struct {
 	Queue       *jobs.Queue
 	Store       *artifacts.Store
 	Review      *review.Service
-	AdminToken  string
 	StorageRoot string
 	WebDir      string
 	Log         *slog.Logger
@@ -51,15 +48,13 @@ func (s *Server) Echo() *echo.Echo {
 	a.GET("/artifacts/:id/content", s.artifactContent)
 	a.GET("/videos/:id/review", s.videoReview)
 
-	m := a.Group("", s.requireToken)
-	m.GET("/auth/check", func(c echo.Context) error { return c.JSON(http.StatusOK, map[string]bool{"ok": true}) })
-	m.PUT("/settings", s.putSettings)
-	m.POST("/episodes", s.createEpisode)
-	m.POST("/episodes/:id/rerender", s.rerender)
-	m.POST("/runs/:id/cancel", s.cancelRun)
-	m.POST("/runs/:id/retry", s.retryRun)
-	m.POST("/videos/:id/decision", s.decide)
-	m.POST("/videos/:id/export", s.export)
+	a.PUT("/settings", s.putSettings)
+	a.POST("/episodes", s.createEpisode)
+	a.POST("/episodes/:id/rerender", s.rerender)
+	a.POST("/runs/:id/cancel", s.cancelRun)
+	a.POST("/runs/:id/retry", s.retryRun)
+	a.POST("/videos/:id/decision", s.decide)
+	a.POST("/videos/:id/export", s.export)
 
 	if s.WebDir != "" {
 		e.GET("/*", s.spa)
@@ -86,7 +81,10 @@ func (s *Server) errorHandler(err error, c echo.Context) {
 	var ae *apiError
 	var he *echo.HTTPError
 	var refused *review.ErrRefused
+	var conflict *jobs.ConflictError
 	switch {
+	case errors.As(err, &conflict):
+		status, msg = http.StatusConflict, conflict.Msg
 	case errors.As(err, &ae):
 		status, msg = ae.status, ae.msg
 	case errors.As(err, &refused):
@@ -111,17 +109,6 @@ func (s *Server) logRequests(next echo.HandlerFunc) echo.HandlerFunc {
 			s.Log.Info("request", "method", c.Request().Method, "path", c.Path(), "status", c.Response().Status)
 		}
 		return err
-	}
-}
-
-func (s *Server) requireToken(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		got := strings.TrimPrefix(c.Request().Header.Get("Authorization"), "Bearer ")
-		if s.AdminToken == "" || subtle.ConstantTimeCompare([]byte(got), []byte(s.AdminToken)) != 1 {
-			s.Log.Warn("auth failure", "method", c.Request().Method, "path", c.Path())
-			return fail(http.StatusUnauthorized, "admin token required")
-		}
-		return next(c)
 	}
 }
 
@@ -180,10 +167,7 @@ func (s *Server) cancelRun(c echo.Context) error {
 		return err
 	}
 	if err := s.Queue.RequestCancel(c.Request().Context(), id); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return err
-		}
-		return fail(http.StatusConflict, "run cannot be cancelled now")
+		return err
 	}
 	return c.JSON(http.StatusOK, map[string]bool{"ok": true})
 }
@@ -193,16 +177,14 @@ func (s *Server) retryRun(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := s.Queue.RetryFailed(c.Request().Context(), id); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return err
-		}
-		return fail(http.StatusConflict, "only a failed run can be retried")
+	runID, err := s.Queue.Resume(c.Request().Context(), id)
+	if err != nil {
+		return err
 	}
-	return c.JSON(http.StatusOK, map[string]bool{"ok": true})
+	return c.JSON(http.StatusOK, map[string]any{"ok": true, "run_id": runID})
 }
 
-// rerender starts a render+QA run from the latest run whose subtitles stage completed.
+// rerender starts a render+QA run from the latest full or rewrite run whose subtitles stage completed.
 func (s *Server) rerender(c echo.Context) error {
 	id, err := idParam(c)
 	if err != nil {
@@ -211,7 +193,7 @@ func (s *Server) rerender(c echo.Context) error {
 	ctx := c.Request().Context()
 	var src int64
 	err = s.DB.QueryRow(ctx, `SELECT r.id FROM workflow_runs r JOIN jobs j ON j.run_id = r.id
-		WHERE r.episode_id = $1 AND r.kind = 'full' AND j.stage = 'subtitles' AND j.state = 'completed' ORDER BY r.id DESC LIMIT 1`, id).Scan(&src)
+		WHERE r.episode_id = $1 AND r.kind IN ('full', 'rewrite') AND j.stage = 'subtitles' AND j.state = 'completed' ORDER BY r.id DESC LIMIT 1`, id).Scan(&src)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fail(http.StatusConflict, "no finished script, images and audio to re-render from")
 	}

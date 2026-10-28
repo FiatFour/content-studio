@@ -1,13 +1,17 @@
 package api_test
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/fiat/content-studio/internal/api"
 	"github.com/fiat/content-studio/internal/artifacts"
@@ -17,17 +21,20 @@ import (
 	"github.com/fiat/content-studio/internal/store/storetest"
 )
 
-const token = "test-token-1234"
-
 func server(t *testing.T) *httptest.Server {
+	ts, _ := serverDB(t)
+	return ts
+}
+
+func serverDB(t *testing.T) (*httptest.Server, *pgxpool.Pool) {
 	db := storetest.New(t)
 	st := &artifacts.Store{Root: t.TempDir()}
 	s := &api.Server{DB: db, Queue: &jobs.Queue{DB: db, Plan: pipeline.FictionalSeries, MaxAttempts: 3}, Store: st,
-		Review: &review.Service{DB: db, Store: st, ExportDir: t.TempDir()}, AdminToken: token,
-		Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+		Review: &review.Service{DB: db, Store: st, ExportDir: t.TempDir()},
+		Log:    slog.New(slog.NewTextHandler(io.Discard, nil))}
 	ts := httptest.NewServer(s.Echo())
 	t.Cleanup(ts.Close)
-	return ts
+	return ts, db
 }
 
 func call(t *testing.T, ts *httptest.Server, method, path, auth, body string) (int, map[string]any) {
@@ -47,29 +54,15 @@ func call(t *testing.T, ts *httptest.Server, method, path, auth, body string) (i
 	return resp.StatusCode, out
 }
 
-func TestMutatingEndpointsRequireTheToken(t *testing.T) {
-	ts := server(t)
-	for _, ep := range []struct{ method, path string }{
-		{"POST", "/api/episodes"}, {"POST", "/api/episodes/1/rerender"}, {"POST", "/api/runs/1/cancel"}, {"POST", "/api/runs/1/retry"},
-		{"POST", "/api/videos/1/decision"}, {"POST", "/api/videos/1/export"}, {"PUT", "/api/settings"},
-	} {
-		for _, auth := range []string{"", "wrong"} {
-			if code, _ := call(t, ts, ep.method, ep.path, auth, "{}"); code != http.StatusUnauthorized {
-				t.Errorf("%s %s with token %q: %d", ep.method, ep.path, auth, code)
-			}
-		}
-	}
-}
-
 func TestCreateEpisodeValidatesAndQueuesARun(t *testing.T) {
 	ts := server(t)
-	if code, body := call(t, ts, "POST", "/api/episodes", token, `{"title":"x","idea":"short","target_duration_s":60}`); code != 400 {
+	if code, body := call(t, ts, "POST", "/api/episodes", "", `{"title":"x","idea":"short","target_duration_s":60}`); code != 400 {
 		t.Fatalf("short idea accepted: %d %v", code, body)
 	}
-	if code, _ := call(t, ts, "POST", "/api/episodes", token, `{"title":"x","idea":"long enough idea here","target_duration_s":30}`); code != 400 {
+	if code, _ := call(t, ts, "POST", "/api/episodes", "", `{"title":"x","idea":"long enough idea here","target_duration_s":30}`); code != 400 {
 		t.Fatal("30 s target accepted")
 	}
-	code, body := call(t, ts, "POST", "/api/episodes", token, `{"title":"ยายกับมือถือ","idea":"ยายหัดใช้สมาร์ทโฟนครั้งแรก","target_duration_s":90}`)
+	code, body := call(t, ts, "POST", "/api/episodes", "", `{"title":"ยายกับมือถือ","idea":"ยายหัดใช้สมาร์ทโฟนครั้งแรก","target_duration_s":90}`)
 	if code != 201 {
 		t.Fatalf("%d %v", code, body)
 	}
@@ -91,7 +84,7 @@ func TestErrorsAreSanitized(t *testing.T) {
 	if code != 404 || body["error"] != "not found" {
 		t.Fatalf("%d %v", code, body)
 	}
-	code, body = call(t, ts, "POST", "/api/videos/999/decision", token, `{"decision":"approved","sha256":"x"}`)
+	code, body = call(t, ts, "POST", "/api/videos/999/decision", "", `{"decision":"approved","sha256":"x"}`)
 	if code != 409 || strings.Contains(body["error"].(string), "/") {
 		t.Fatalf("%d %v", code, body)
 	}
@@ -102,11 +95,55 @@ func TestLanguageIsStoredInTheBackend(t *testing.T) {
 	if _, body := call(t, ts, "GET", "/api/settings", "", ""); body["ui_lang"] != "th" {
 		t.Fatalf("default %v", body)
 	}
-	if code, _ := call(t, ts, "PUT", "/api/settings", token, `{"ui_lang":"fr"}`); code != 400 {
+	if code, _ := call(t, ts, "PUT", "/api/settings", "", `{"ui_lang":"fr"}`); code != 400 {
 		t.Fatal("fr accepted")
 	}
-	call(t, ts, "PUT", "/api/settings", token, `{"ui_lang":"en"}`)
+	call(t, ts, "PUT", "/api/settings", "", `{"ui_lang":"en"}`)
 	if _, body := call(t, ts, "GET", "/api/settings", "", ""); body["ui_lang"] != "en" {
 		t.Fatalf("after put %v", body)
+	}
+}
+
+func TestRerenderCanStartFromARewriteRun(t *testing.T) {
+	ts, db := serverDB(t)
+	_, ep := storetest.Episode(t, db)
+	ctx := context.Background()
+	// The original full run failed at the voice stage, so only the rewrite run reached subtitles.
+	var full, rewrite int64
+	if err := db.QueryRow(ctx, `INSERT INTO workflow_runs (episode_id, profile, kind, state) VALUES ($1, 'fictional_series', 'full', 'failed') RETURNING id`, ep).Scan(&full); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(ctx, `INSERT INTO workflow_runs (episode_id, profile, kind, parent_run_id, state, feedback) VALUES ($1, 'fictional_series', 'rewrite', $2, 'ready_for_review', 'x') RETURNING id`, ep, full).Scan(&rewrite); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO jobs (run_id, stage, seq, state) VALUES ($1, 'subtitles', 3, 'completed')`, rewrite); err != nil {
+		t.Fatal(err)
+	}
+	code, body := call(t, ts, "POST", "/api/episodes/"+strconv.FormatInt(ep, 10)+"/rerender", "", "{}")
+	if code != http.StatusCreated || body["run_id"] == nil {
+		t.Fatalf("%d %v", code, body)
+	}
+	var parent int64
+	if err := db.QueryRow(ctx, `SELECT parent_run_id FROM workflow_runs WHERE id = $1`, int64(body["run_id"].(float64))).Scan(&parent); err != nil || parent != rewrite {
+		t.Fatalf("re-render parent %d (err %v), want the rewrite run %d", parent, err, rewrite)
+	}
+}
+
+func TestRunActionsReportConflictAndNotFoundDistinctly(t *testing.T) {
+	ts, db := serverDB(t)
+	_, ep := storetest.Episode(t, db)
+	var run int64
+	if err := db.QueryRow(context.Background(), `INSERT INTO workflow_runs (episode_id, profile, kind, state) VALUES ($1, 'fictional_series', 'full', 'ready_for_review') RETURNING id`, ep).Scan(&run); err != nil {
+		t.Fatal(err)
+	}
+	id := strconv.FormatInt(run, 10)
+	if code, body := call(t, ts, "POST", "/api/runs/"+id+"/retry", "", "{}"); code != http.StatusConflict || !strings.Contains(body["error"].(string), "only failed runs can be retried") {
+		t.Fatalf("retry of a finished run: %d %v", code, body)
+	}
+	if code, body := call(t, ts, "POST", "/api/runs/"+id+"/cancel", "", "{}"); code != http.StatusConflict || !strings.Contains(body["error"].(string), "not running") {
+		t.Fatalf("cancel of a finished run: %d %v", code, body)
+	}
+	if code, _ := call(t, ts, "POST", "/api/runs/999999/retry", "", "{}"); code != http.StatusNotFound {
+		t.Fatalf("retry of a missing run: %d, want 404", code)
 	}
 }

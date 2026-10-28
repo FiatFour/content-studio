@@ -2,20 +2,9 @@ export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
-const TOKEN_KEY = "studio.adminToken";
-
-export function getToken(): string {
-  try { return localStorage.getItem(TOKEN_KEY) ?? ""; } catch { return ""; }
-}
-export function setToken(v: string) {
-  try { localStorage.setItem(TOKEN_KEY, v); } catch { /* the token then lasts for this page only */ }
-}
-
 export async function api<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   const headers: Record<string, string> = {};
   if (init?.body !== undefined) headers["Content-Type"] = "application/json";
-  const token = getToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
   let resp: Response;
   try {
     resp = await fetch(`/api${path}`, { method: init?.method ?? "GET", headers, body: init?.body === undefined ? undefined : JSON.stringify(init.body) });
@@ -35,7 +24,7 @@ export type Job = {
   started_at: string | null; finished_at: string | null; updated_at: string;
 };
 export type Run = {
-  id: number; kind: "full" | "rerender"; source_run_id: number | null; state: string; created_at: string;
+  id: number; kind: "full" | "rerender" | "rewrite"; parent_run_id: number | null; feedback: string | null; state: string; created_at: string;
   finished_at: string | null; stages: string[]; jobs: Job[];
 };
 export type EpisodeSummary = { id: number; number: number; title: string; target_duration_s: number; created_at: string; latest_run: Run | null };

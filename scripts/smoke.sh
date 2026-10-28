@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # Creates one real 60 s episode through the API, waits for it, and checks the MP4 with ffprobe.
-# Needs `make dev` running and its admin token in var/admin-token.
+# Needs `make dev` running.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-TOKEN=$(cat var/admin-token)
 API=${STUDIO_API:-http://127.0.0.1:8080/api}
-auth=(-H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json')
+auth=(-H 'Content-Type: application/json')
 
 resp=$(curl -sf "${auth[@]}" -X POST "$API/episodes" -d '{"title":"smoke test","idea":"คุณยายหัดใช้สมาร์ทโฟนครั้งแรกและโทรหาลุงโดยไม่ได้ตั้งใจ","target_duration_s":60}')
 ep=$(echo "$resp" | python3 -c 'import json,sys;print(json.load(sys.stdin)["episode_id"])')

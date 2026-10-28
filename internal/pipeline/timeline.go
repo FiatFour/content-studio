@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -41,6 +42,57 @@ const (
 	durationTolPct = 10
 )
 
+// baseDurationMS is the episode length with the fixed pauses and no stretching.
+func baseDurationMS(shots []FlatShot, lineDur []time.Duration) int64 {
+	base := int64(leadMS + tailMS)
+	li := 0
+	for i, sh := range shots {
+		if len(sh.Lines) == 0 {
+			base += emptyShotMS
+		}
+		for k := range sh.Lines {
+			base += lineDur[li].Milliseconds()
+			if k > 0 {
+				base += lineGapMS
+			}
+			li++
+		}
+		if i < len(shots)-1 {
+			base += shotGapMS
+		}
+	}
+	return base
+}
+
+// The voice stage accepts a script when its unstretched length is within these percentages of the
+// target. The lower bound is tighter than the QA gate so padding stays a small fraction of the video.
+const (
+	fitMinPct = 85
+	fitMaxPct = 110
+)
+
+// dialogueFit checks the measured audio against the target. It returns "" when the script fits, or
+// guidance for the scriptwriter built only from measured numbers: how long the speech ran, how fast
+// the voice speaks, and how many Thai characters would land on the target.
+func dialogueFit(shots []FlatShot, lineDur []time.Duration, chars, targetS int) string {
+	base := baseDurationMS(shots, lineDur)
+	target := int64(targetS) * 1000
+	if base >= target*fitMinPct/100 && base <= target*fitMaxPct/100 {
+		return ""
+	}
+	var speech time.Duration
+	for _, d := range lineDur {
+		speech += d
+	}
+	overhead := base - speech.Milliseconds()
+	rate := float64(chars) / speech.Seconds()
+	wantChars := int(rate * float64(target*97/100-overhead) / 1000)
+	wantChars = min(max(wantChars, targetS*int(minCharsPerSecond)), targetS*int(maxCharsPerSecond))
+	wantLines := max(wantChars/55, int(math.Ceil(minLinesPerShot*float64(len(shots)))))
+	return fmt.Sprintf("The dialogue had %d Thai characters. Spoken aloud they took %.0f s (%.1f characters per second), so the video would be %.0f s, but this episode must be %d s (%d to %d s is accepted). Write about %d Thai characters of dialogue in total, around %d lines of 40 to 70 characters",
+		chars, speech.Seconds(), rate, float64(base)/1000, targetS, targetS*fitMinPct/100, targetS*fitMaxPct/100, wantChars, wantLines)
+}
+
 // PlanTimeline lays lines out with fixed pauses, then lengthens the pauses (up to maxExtraGapMS each)
 // to approach the target. It fails if the result is still outside the ±10% QA tolerance, so a
 // script that cannot fit is rejected before the render.
@@ -54,25 +106,16 @@ func PlanTimeline(shots []FlatShot, lineDur []time.Duration, targetS int) (Timel
 	if nLines != len(lineDur) {
 		return Timeline{}, fmt.Errorf("timeline: %d lines in script but %d audio clips", nLines, len(lineDur))
 	}
-	base := int64(leadMS + tailMS)
-	li := 0
+	base := baseDurationMS(shots, lineDur)
 	for i, sh := range shots {
-		if len(sh.Lines) == 0 {
-			base += emptyShotMS
-		}
 		for k := range sh.Lines {
-			base += lineDur[li].Milliseconds()
 			if k > 0 {
-				base += lineGapMS
 				slots = append(slots, slot{i, k})
 			}
-			li++
-		}
-		if i < len(shots)-1 {
-			base += shotGapMS
 		}
 		slots = append(slots, slot{i, -1})
 	}
+	li := 0
 	target := int64(targetS) * 1000
 	tol := target * durationTolPct / 100
 	if base > target+tol {

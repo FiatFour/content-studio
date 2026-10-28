@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { api, ApiError, getToken, type EpisodeSummary } from "../api";
+import { api, ApiError, type EpisodeSummary } from "../api";
 import { usePoll } from "../hooks";
 import { useI18n, type Key } from "../i18n";
 import { Bar, Card, StateBadge, fmtTime } from "../ui";
@@ -14,12 +14,11 @@ export function Episodes() {
   const [err, setErr] = useState("");
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!getToken()) { setErr(t("auth.missing")); return; }
     setBusy(true); setErr("");
     try {
       const r = await api<{ episode_id: number }>("/episodes", { method: "POST", body: { title, idea, target_duration_s: len } });
       location.hash = `#/episodes/${r.episode_id}`;
-    } catch (x) { setErr(x instanceof ApiError ? (x.status === 401 ? t("auth.rejected") : x.message) : t("app.error")); }
+    } catch (x) { setErr(x instanceof ApiError ? x.message : t("app.error")); }
     finally { setBusy(false); }
   };
   return <div className="flex flex-col gap-4">

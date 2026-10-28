@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, ApiError, contentUrl, getToken, type EpisodeSummary, type Review } from "../api";
+import { api, ApiError, contentUrl, type EpisodeSummary, type Review } from "../api";
 import { usePoll } from "../hooks";
 import { useI18n, type Key } from "../i18n";
 import { Card, StateBadge, fmtBytes, fmtTime } from "../ui";
@@ -42,9 +42,8 @@ export function ReviewPage({ id }: { id: number }) {
   const blockingFail = qa.some((q) => q.severity === "blocking" && !q.passed);
   const canApprove = v.validation_status === "qa_passed" && !blockingFail;
   const post = async (path: string, body?: unknown) => {
-    if (!getToken()) { setMsg(t("auth.missing")); return false; }
     try { await api(path, { method: "POST", body }); setMsg(""); r.reload(); return true; }
-    catch (x) { setMsg(x instanceof ApiError ? (x.status === 401 ? t("auth.rejected") : x.message) : t("app.error")); return false; }
+    catch (x) { setMsg(x instanceof ApiError ? x.message : t("app.error")); return false; }
   };
   const decide = async (decision: "approved" | "rejected" | "changes_requested") => {
     if (decision !== "approved" && notes.trim() === "") { setMsg(t("review.notesRequired")); return; }

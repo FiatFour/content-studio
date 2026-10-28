@@ -9,7 +9,7 @@ M0 measurements and recommendations for each open item are in `docs/assessment.m
 | # | Decision | Blocks | Notes |
 |---|---|---|---|
 | D8 | **Character consistency technique** (IP-Adapter vs. LoRA vs. other). | M1b | Decided after the M1b spike. |
-| D9 | **Auth approach** beyond the localhost admin token. | M2, or earlier if exposed | Not needed while the app is bound to localhost. Required before it is reachable from a phone, Tailscale, LAN or a server. For a solo owner prefer a passkey or password + session cookie with CSRF protection and HTTPS, not full user management. |
+| D9 | **Auth approach.** M1a has none (the localhost admin token was removed 2026-10-28). | M2, or earlier if exposed | Not needed while the app is bound to localhost. Required before it is reachable from a phone, Tailscale, LAN or a server. For a solo owner prefer a passkey or password + session cookie with CSRF protection and HTTPS, not full user management. |
 | D10 | **First cloud provider**, if any. | M2 | Verify current pricing and commercial-use terms from official docs before adding. |
 
 ## Decided
