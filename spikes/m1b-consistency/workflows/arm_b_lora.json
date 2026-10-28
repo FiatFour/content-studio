@@ -1,0 +1,111 @@
+{
+ "1": {
+ "class_type": "CheckpointLoaderSimple",
+ "inputs": {
+  "ckpt_name": "DreamShaperXL_Turbo_v2_1.safetensors"
+ }
+ },
+ "2": {
+ "class_type": "CLIPTextEncode",
+ "_meta": {
+  "title": "positive"
+ },
+ "inputs": {
+  "clip": [
+   "8",
+   1
+  ],
+  "text": "PLACEHOLDER"
+ }
+ },
+ "3": {
+ "class_type": "CLIPTextEncode",
+ "_meta": {
+  "title": "negative"
+ },
+ "inputs": {
+  "clip": [
+   "8",
+   1
+  ],
+  "text": "PLACEHOLDER"
+ }
+ },
+ "4": {
+ "class_type": "EmptyLatentImage",
+ "inputs": {
+  "width": 768,
+  "height": 1344,
+  "batch_size": 1
+ }
+ },
+ "5": {
+ "class_type": "KSampler",
+ "inputs": {
+  "model": [
+   "8",
+   0
+  ],
+  "positive": [
+   "2",
+   0
+  ],
+  "negative": [
+   "3",
+   0
+  ],
+  "latent_image": [
+   "4",
+   0
+  ],
+  "seed": 0,
+  "steps": 8,
+  "cfg": 2.0,
+  "sampler_name": "dpmpp_sde",
+  "scheduler": "karras",
+  "denoise": 1.0
+ }
+ },
+ "6": {
+ "class_type": "VAEDecode",
+ "inputs": {
+  "samples": [
+   "5",
+   0
+  ],
+  "vae": [
+   "1",
+   2
+  ]
+ }
+ },
+ "7": {
+ "class_type": "SaveImage",
+ "inputs": {
+  "images": [
+   "6",
+   0
+  ],
+  "filename_prefix": "m1b/PLACEHOLDER"
+ }
+ },
+ "8": {
+ "inputs": {
+  "model": [
+   "1",
+   0
+  ],
+  "clip": [
+   "1",
+   1
+  ],
+  "lora_name": "m1b_PLACEHOLDER.safetensors",
+  "strength_model": 0.8,
+  "strength_clip": 0.0
+ },
+ "class_type": "LoraLoader",
+ "_meta": {
+  "title": "lora"
+ }
+ }
+}

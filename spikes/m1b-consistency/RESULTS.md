@@ -1,8 +1,8 @@
 # M1b consistency spike: results so far
 
-Status: **arms C (baseline) and A (IP-Adapter) measured; arm B (per-character LoRA) not started. No decision yet (D8).**
+Status: **all three arms measured (C baseline, A IP-Adapter, B per-character LoRA). No decision yet (D8): the owner judges quality.**
 Plan: `PLAN.md`. Harness: `harness.py`, fixture `fixture.json`. Spike commit base `3cc7e6a`; ComfyUI `cdf272f`, `ComfyUI_IPAdapter_plus` `a0f451a5` (GPL-3.0, last commit April 2025), weights `h94/IP-Adapter` (Apache-2.0).
-Images and contact sheets are generated media and stay outside git in `~/ai/m1b-out/` (`c2/contact_C.png`, `a04/contact_A.png`, `a/contact_A.png`).
+Images and contact sheets are generated media and stay outside git in `~/ai/m1b-out/` (`c2/contact_C.png`, `a04/contact_A.png`, `a/contact_A.png`, `b/contact_B.png`).
 
 ## Setup
 
@@ -16,6 +16,7 @@ Time is wall clock from `POST /prompt` until history reports success; cold is th
 |---|---|---|---|---|
 | C baseline, rerun | 35.9 s | **10.4 s** (10.3-11.6) | 6974 MiB | yes |
 | A IP-Adapter, weight 0.4 | 43.2 s | **12.4 s** (11.4-16.7) | 7072 MiB | yes |
+| B LoRA, strength 0.8 | 38.4 s | **10.9 s** (10.4-14.9) | 6974 MiB | yes |
 | C baseline, first run | 48.1 s | 65.0 s (27.4-117.3) | 7006 MiB | **no, slowed** |
 | A IP-Adapter, weight 0.7 | 55.5 s | 38.2 s (26.8-150.7) | 7072 MiB | **no, slowed** |
 
@@ -30,12 +31,34 @@ IP-Adapter adds about 2 s per image (about 20 %) and about 100 MiB at weight 0.4
 - **IP-Adapter at weight 0.4.** Outfit and identity stay stable and the scenes appear (sofa, kitchen, market, lake). A bias towards the reference pose (hands on hips, front view) remains, and the uncle's face still varies a little (one shot has a grey beard). The reference was a full-body front view, which probably drives the pose bias.
 - All arms render closer to photographs than to an adult-animated sitcom. That comes from the D4 checkpoint and the shared style prompt, not from the technique, and matters for the style decision regardless of D8.
 
+## Arm B: per-character LoRA
+
+Training tool `kohya-ss/sd-scripts` at `cb70b968` (Apache-2.0), installed by the owner into a separate venv. SDXL U-Net-only LoRA, rank 8 / alpha 4, 640 px with bucketing, batch 1, gradient checkpointing, bf16 with `--full_bf16`, Adafactor lr 1e-4, 800 steps over 14 images x 5 repeats, see `train_lora.sh` in `~/ai/m1b-out/` (outside git). Same seeds, prompts and D4 settings as the other arms; prompts get a per-character trigger token; LoRA strength 0.8 (U-Net only).
+
+| Cost | Value |
+|---|---|
+| Training, per character | 800 steps in 14 min 6 s (1.06 s/step), grandmother; uncle about 15 min |
+| Training peak VRAM | 7588 MiB (of 8 GB: no headroom, nothing else may use the GPU) |
+| Training peak RAM | about 10.0 GB including swap (WSL has 11.5 GiB) |
+| Max GPU temperature | 67 C, no slowdown |
+| Dataset | 28 images (14 per character), about 7 min to generate, one time |
+| Inference | 10.9 s warm median, same VRAM peak as the baseline (6974 MiB): no runtime cost |
+
+**Lesson: memory guard.** The first training attempt loaded SDXL in fp32, RAM reached 11.78 of 11.8 GB and the whole WSL VM crashed. It worked after adding `--full_bf16`, 3 GB swap and running under `systemd-run --user --scope -p MemoryMax=9500M -p MemorySwapMax=3G`, so an OOM kills only the training process. Any production training step must run behind such a limit.
+
+**Bias warning.** The training images were generated with IP-Adapter at 0.4 from the provisional reference, not drawn or chosen by the owner. The LoRA therefore learned the reference pose and look, and any quirk of arm A. A real pipeline would need a curated dataset per character.
+
+Observations (advisory):
+- Grandmother: face, hair, glasses, necklace, outfit and sarong are very stable across all six shots; blouse colour still varies once (shot 2 yellow). Pose and framing are almost the same in every shot (front view, hands on hips), and the scenes look like a backdrop behind a pasted figure. Strongest identity of the three arms, weakest pose variety.
+- Uncle: outfit stable, face similar, scenes follow prompts (sofa, motorbike, pier, noodle stall, street, hammock chair). Rendering style still jumps (shot 2 is a cartoon, the others photographic); the LoRA does not fix style drift.
+- Still photographic rather than adult-animated, as in all arms.
+
 ## Not done yet
 
-1. **Arm B, per-character LoRA.** Needs `kohya-ss/sd-scripts` (third-party code, not installed; the owner has not approved it), a per-character image set and a long sustained GPU load. SDXL LoRA is documented to fit in 8 GB only with U-Net-only training, gradient checkpointing and a low rank; unverified here. It also needs the owner's go-ahead because this machine has hard-reset under GPU load.
+1. Arm B with a curated dataset (not generated through IP-Adapter), other strengths (0.6 to 1.0), and a LoRA trained for more or fewer steps (checkpoints at step 400 exist).
 2. Owner verdict on recognizability (recognizable / drifting / different person) from the contact sheets, and the choice of reference images.
 3. More IP-Adapter settings (weight 0.3 to 0.5, end_at, a head-and-shoulders reference) and a second clean timing sample per arm.
 
 ## Recommendation
 
-None yet. Do not decide D8 on arms A and C alone: B is the missing comparison and the spec asks for it.
+None; D8 is the owner's. Facts for the decision: B gives the strongest identity and no runtime cost, but costs about 15 min of exclusive GPU and a curated dataset per character, needs an OOM guard, and locks pose. A needs no training and gives scene variety with some identity drift. C drifts. Neither fixes the photographic style.

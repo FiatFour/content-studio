@@ -1,38 +1,95 @@
 {
-  "checkpoint": "DreamShaperXL_Turbo_v2_1.safetensors",
-  "settings": {"steps": 8, "cfg": 2.0, "sampler_name": "dpmpp_sde", "scheduler": "karras", "width": 768, "height": 1344},
-  "style_prompt": "adult animated sitcom style, original character design, thick black outlines, flat cel shading, bold saturated colors, expressive cartoon faces, clean vector look, vertical cinematic framing",
-  "negative_prompt": "photo, realistic, 3d render, blurry, text, watermark, logo, signature, extra fingers, deformed, multiple people",
-  "reference": {
-    "seed_base": 7000,
-    "prompt_suffix": "full body, standing, front view, facing the camera, neutral expression, plain light grey background"
-  },
-  "characters": [
+ "checkpoint": "DreamShaperXL_Turbo_v2_1.safetensors",
+ "settings": {
+  "steps": 8,
+  "cfg": 2.0,
+  "sampler_name": "dpmpp_sde",
+  "scheduler": "karras",
+  "width": 768,
+  "height": 1344
+ },
+ "style_prompt": "adult animated sitcom style, original character design, thick black outlines, flat cel shading, bold saturated colors, expressive cartoon faces, clean vector look, vertical cinematic framing",
+ "negative_prompt": "photo, realistic, 3d render, blurry, text, watermark, logo, signature, extra fingers, deformed, multiple people",
+ "reference": {
+  "seed_base": 7000,
+  "prompt_suffix": "full body, standing, front view, facing the camera, neutral expression, plain light grey background"
+ },
+ "characters": [
+  {
+   "id": "yai_nuan",
+   "name": "Yai Nuan",
+   "appearance": "an elderly Thai grandmother, short curly silver hair, round gold-rimmed glasses, deep smile lines, small stout build, wearing a mustard yellow floral blouse and a dark green sarong skirt, jade bead necklace",
+   "scenes": [
     {
-      "id": "yai_nuan",
-      "name": "Yai Nuan",
-      "appearance": "an elderly Thai grandmother, short curly silver hair, round gold-rimmed glasses, deep smile lines, small stout build, wearing a mustard yellow floral blouse and a dark green sarong skirt, jade bead necklace",
-      "scenes": [
-        {"id": "s1", "seed": 1101, "prompt": "squinting at a smartphone held at arm's length, confused expression, sitting in a cozy wooden Thai house living room"},
-        {"id": "s2", "seed": 1102, "prompt": "shouting with mouth wide open and a wooden spoon raised, angry expression, in a small kitchen with steaming pots"},
-        {"id": "s3", "seed": 1103, "prompt": "laughing with her head thrown back, joyful expression, on a porch at sunset with potted plants"},
-        {"id": "s4", "seed": 1104, "prompt": "walking briskly with a shopping basket, determined expression, in a busy open-air fresh market"},
-        {"id": "s5", "seed": 1105, "prompt": "sitting cross-legged on the floor, whispering a secret with a hand beside her mouth, sly expression, dim bedroom lit by a bedside lamp"},
-        {"id": "s6", "seed": 1106, "prompt": "standing in a doorway with arms crossed, disapproving expression, rainy street visible behind her"}
-      ]
+     "id": "s1",
+     "seed": 1101,
+     "prompt": "squinting at a smartphone held at arm's length, confused expression, sitting in a cozy wooden Thai house living room"
     },
     {
-      "id": "lung_chai",
-      "name": "Lung Chai",
-      "appearance": "a lanky middle-aged Thai uncle, messy black hair with a receding hairline, thin mustache, tired droopy eyes, wearing a faded teal polo shirt, beige cargo shorts and rubber flip-flops, silver watch on left wrist",
-      "scenes": [
-        {"id": "s1", "seed": 2101, "prompt": "slumped on a worn sofa holding a TV remote, bored expression, small cluttered apartment living room"},
-        {"id": "s2", "seed": 2102, "prompt": "leaning over a motorbike with a wrench, frustrated expression, in a narrow alley garage"},
-        {"id": "s3", "seed": 2103, "prompt": "grinning proudly while holding up a huge fish, excited expression, on a wooden pier at dawn"},
-        {"id": "s4", "seed": 2104, "prompt": "sitting at a street food stall with a bowl of noodles, surprised expression with wide eyes, evening neon lights"},
-        {"id": "s5", "seed": 2105, "prompt": "running with arms flailing, panicked expression, across a rainy street"},
-        {"id": "s6", "seed": 2106, "prompt": "napping in a hammock, peaceful expression with closed eyes, under a mango tree in a sunny backyard"}
-      ]
+     "id": "s2",
+     "seed": 1102,
+     "prompt": "shouting with mouth wide open and a wooden spoon raised, angry expression, in a small kitchen with steaming pots"
+    },
+    {
+     "id": "s3",
+     "seed": 1103,
+     "prompt": "laughing with her head thrown back, joyful expression, on a porch at sunset with potted plants"
+    },
+    {
+     "id": "s4",
+     "seed": 1104,
+     "prompt": "walking briskly with a shopping basket, determined expression, in a busy open-air fresh market"
+    },
+    {
+     "id": "s5",
+     "seed": 1105,
+     "prompt": "sitting cross-legged on the floor, whispering a secret with a hand beside her mouth, sly expression, dim bedroom lit by a bedside lamp"
+    },
+    {
+     "id": "s6",
+     "seed": 1106,
+     "prompt": "standing in a doorway with arms crossed, disapproving expression, rainy street visible behind her"
     }
-  ]
+   ],
+   "lora_token": "yainuan woman"
+  },
+  {
+   "id": "lung_chai",
+   "name": "Lung Chai",
+   "appearance": "a lanky middle-aged Thai uncle, messy black hair with a receding hairline, thin mustache, tired droopy eyes, wearing a faded teal polo shirt, beige cargo shorts and rubber flip-flops, silver watch on left wrist",
+   "scenes": [
+    {
+     "id": "s1",
+     "seed": 2101,
+     "prompt": "slumped on a worn sofa holding a TV remote, bored expression, small cluttered apartment living room"
+    },
+    {
+     "id": "s2",
+     "seed": 2102,
+     "prompt": "leaning over a motorbike with a wrench, frustrated expression, in a narrow alley garage"
+    },
+    {
+     "id": "s3",
+     "seed": 2103,
+     "prompt": "grinning proudly while holding up a huge fish, excited expression, on a wooden pier at dawn"
+    },
+    {
+     "id": "s4",
+     "seed": 2104,
+     "prompt": "sitting at a street food stall with a bowl of noodles, surprised expression with wide eyes, evening neon lights"
+    },
+    {
+     "id": "s5",
+     "seed": 2105,
+     "prompt": "running with arms flailing, panicked expression, across a rainy street"
+    },
+    {
+     "id": "s6",
+     "seed": 2106,
+     "prompt": "napping in a hammock, peaceful expression with closed eyes, under a mango tree in a sunny backyard"
+    }
+   ],
+   "lora_token": "lungchai man"
+  }
+ ]
 }

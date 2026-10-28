@@ -122,7 +122,7 @@ def node_by_title(g, title):
     return hits[0]
 
 
-def patch(template, *, positive, negative, seed, prefix, ref_image=None, weight=None):
+def patch(template, *, positive, negative, seed, prefix, ref_image=None, weight=None, lora=None):
     g = copy.deepcopy(template)
     node_by_title(g, "positive")["inputs"]["text"] = positive
     node_by_title(g, "negative")["inputs"]["text"] = negative
@@ -136,6 +136,9 @@ def patch(template, *, positive, negative, seed, prefix, ref_image=None, weight=
         node_by_title(g, "reference")["inputs"]["image"] = ref_image
     if weight is not None:
         node_by_title(g, "ipadapter")["inputs"]["weight"] = weight
+    if lora is not None:
+        n = node_by_title(g, "lora")["inputs"]
+        n["lora_name"], n["strength_model"] = lora
     return g
 
 
@@ -150,7 +153,7 @@ def jobs(fixture, arm):
         else:
             for s in c["scenes"]:
                 out.append(dict(char=c["id"], scene=s["id"], seed=s["seed"], negative=neg,
-                                positive=f'{style}, {c["appearance"]}, {s["prompt"]}',
+                                positive=(f'{c["lora_token"]}, ' if arm == "B" else "") + f'{style}, {c["appearance"]}, {s["prompt"]}',
                                 file=f'{arm}_{c["id"]}_{s["id"]}.png'))
     return out
 
@@ -172,7 +175,8 @@ def run_arm(args, fixture, template, comfy, sampler):
         for i, j in enumerate(jobs(fixture, args.arm)):
             g = patch(template, positive=j["positive"], negative=j["negative"], seed=j["seed"],
                       prefix=f'm1b/{args.arm}_{j["char"]}_{j["scene"]}', ref_image=refs.get(j["char"]),
-                      weight=args.weight if args.arm == "A" else None)
+                      weight=args.weight if args.arm == "A" else None,
+                      lora=(f'm1b_{j["char"]}.safetensors', args.lora_strength) if args.arm == "B" else None)
             pid, secs, imgs = comfy.submit_and_wait(g)
             if len(imgs) != 1:
                 raise HarnessError(f"prompt {pid}: expected 1 output image, got {len(imgs)}")
@@ -194,12 +198,13 @@ def run_arm(args, fixture, template, comfy, sampler):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--arm", required=True, choices=["REF", "C", "A"])
+    ap.add_argument("--arm", required=True, choices=["REF", "C", "A", "B"])
     ap.add_argument("--workflow", required=True)
     ap.add_argument("--fixture", default=os.path.join(HERE, "fixture.json"))
     ap.add_argument("--out", required=True, help="output dir (created; must not already hold results.json)")
     ap.add_argument("--refs-dir", help="arm A: dir with <character id>.png reference images")
     ap.add_argument("--server", default="http://127.0.0.1:8188")
+    ap.add_argument("--lora-strength", type=float, default=0.8, help="arm B LoRA strength (U-Net)")
     ap.add_argument("--weight", type=float, default=0.7, help="arm A IP-Adapter weight")
     ap.add_argument("--timeout", type=float, default=600, help="per-image timeout in seconds")
     ap.add_argument("--nvidia-smi", default="nvidia-smi")

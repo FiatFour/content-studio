@@ -11,7 +11,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCALARS = {"INT": int, "FLOAT": (int, float), "STRING": str, "BOOLEAN": bool}
-DYNAMIC_ENUM = {("LoadImage", "image")}
+DYNAMIC_ENUM = {("LoadImage", "image"), ("LoraLoader", "lora_name")}
 
 
 def spec_of(v):
