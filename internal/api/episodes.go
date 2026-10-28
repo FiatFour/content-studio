@@ -79,6 +79,7 @@ func (s *Server) loadRuns(ctx context.Context, episodeID int64, limit int) ([]ru
 			var j jobDetail
 			err := r.Scan(&j.ID, &j.Stage, &j.State, &j.Attempt, &j.ProgressDone, &j.ProgressTotal, &j.Provider, &j.Model, &j.ErrorClass, &j.ErrorMessage,
 				&j.StartedAt, &j.FinishedAt, &j.UpdatedAt)
+			j.ErrorMessage = scrubPaths(j.ErrorMessage)
 			return j, err
 		})
 		if err != nil {
