@@ -68,13 +68,13 @@ func TestApproveThenExportCopiesExactBytes(t *testing.T) {
 	f, q, ep, project := setup(t)
 	ctx := context.Background()
 	v := f.video(t, q, ep, project, "video-v1", "qa_passed")
-	if _, err := f.svc.Export(ctx, v.ID); !refused(err) {
+	if _, err := f.svc.Export(ctx, v.ID, "owner"); !refused(err) {
 		t.Fatalf("export before approval: %v", err)
 	}
 	if _, err := f.svc.Decide(ctx, v.ID, v.SHA256, review.Approved, "", "owner"); err != nil {
 		t.Fatal(err)
 	}
-	e, err := f.svc.Export(ctx, v.ID)
+	e, err := f.svc.Export(ctx, v.ID, "owner")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestNewVersionStartsUnapproved(t *testing.T) {
 	if ap, _ := f.svc.Latest(ctx, v2.ID); ap != nil {
 		t.Fatal("approval carried over to the new version")
 	}
-	if _, err := f.svc.Export(ctx, v2.ID); !refused(err) {
+	if _, err := f.svc.Export(ctx, v2.ID, "owner"); !refused(err) {
 		t.Fatalf("unapproved v2 exported: %v", err)
 	}
 	if _, err := f.svc.Decide(ctx, v2.ID, v1.SHA256, review.Approved, "", "owner"); !refused(err) {
@@ -126,7 +126,7 @@ func TestApprovalRefusedWithoutQAOrWithTamperedFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte("tampered"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.svc.Export(ctx, ok.ID); !refused(err) {
+	if _, err := f.svc.Export(ctx, ok.ID, "owner"); !refused(err) {
 		t.Fatalf("tampered file exported: %v", err)
 	}
 }

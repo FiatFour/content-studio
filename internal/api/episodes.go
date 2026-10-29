@@ -360,7 +360,7 @@ func (s *Server) export(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	e, err := s.Review.Export(c.Request().Context(), id)
+	e, err := s.Review.Export(c.Request().Context(), id, owner)
 	if err != nil {
 		return err
 	}

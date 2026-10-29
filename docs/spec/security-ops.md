@@ -50,6 +50,9 @@ The operations dashboard (M3) should answer:
 ## Audit log
 Append-only table for approvals, rejections, exports, canon commits, budget and provider changes, kill switch, and auth failures. Who, what, when, before/after values.
 
+**Status (M2, migration 0010):** `audit_log` exists and refuses UPDATE, DELETE and TRUNCATE through triggers (the app connects as the table owner, so revoked privileges would not hold). Code: `internal/audit`. Rows are written in the same transaction as the action for review decisions (`review.approved|rejected|changes_requested`), `export.create`, `settings.update`, and canon writes (`canon.character.create|update`, `canon.summary.put`, `canon.in_story_date.put`). Read-only `GET /api/audit?limit=&before=` (newest first). `actor` is a column (`owner` until D9). `detail` is a short object of scalars (strings capped at 200 chars, 2000 chars total by CHECK); no request bodies, secrets or absolute paths.
+Limitations: `job.cancel` and `job.retry` are written in a separate transaction right after the queue commits, because `Queue.RequestCancel` and `Queue.Resume` own their transactions; a crash between the two loses that row. Fix when the queue rework lands (take a hook or a tx). Not yet audited: budget/provider changes, kill switch, auth failures (those features do not exist yet). `before/after` values are not stored, only the action's key facts. A superuser can still disable the triggers; backups cover that case.
+
 ## Backup and restore (M2)
 - Postgres: `pg_dump` on a schedule, with retention (e.g. 7 daily, 4 weekly).
 - Artifacts: sync the storage root to a second disk or remote, with the same schedule.
