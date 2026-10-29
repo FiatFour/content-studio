@@ -56,7 +56,7 @@ func run(log *slog.Logger) error {
 		return fmt.Errorf("STUDIO_LEASE_SECONDS must be at least 3")
 	}
 	q := &jobs.Queue{DB: db, Plan: pipeline.FictionalSeries, MaxAttempts: cfg.MaxAttempts,
-		Owner: workerID(), LeaseTTL: time.Duration(cfg.LeaseSeconds) * time.Second}
+		Owner: workerID(), LeaseTTL: time.Duration(cfg.LeaseSeconds) * time.Second, Log: log}
 	deps := &pipeline.Deps{
 		DB: db, Store: &artifacts.Store{Root: cfg.StorageRoot}, Queue: q,
 		LLM: llm, Images: comfy, Voice: voice, Segmenter: voice,

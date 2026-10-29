@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand/v2"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/fiat/content-studio/internal/notify"
 )
 
 // Plan is the ordered stage list for each run kind. It comes from the content profile.
@@ -61,6 +64,8 @@ type Queue struct {
 	// production leaves both nil.
 	Delay  func(se *StageError, attemptsUsed int) time.Duration
 	Jitter func() float64
+	// Log receives notification problems that must not fail the queue. Nil means slog.Default().
+	Log *slog.Logger
 }
 
 // DefaultLeaseTTL is long enough that a busy but healthy worker never misses a heartbeat (they come
@@ -391,11 +396,43 @@ func (q *Queue) Fail(ctx context.Context, j *Job, se *StageError) error {
 		if _, err = tx.Exec(ctx, `UPDATE workflow_runs SET state = $1, finished_at = now() WHERE id = $2`, runState, j.RunID); err != nil {
 			return err
 		}
+		if to == Failed {
+			q.notifyFailed(ctx, tx, j.ID, j.Attempt, se.Class, se.Message)
+		}
 		if to == Failed && remedy == RewriteScript {
 			return q.autoRewrite(ctx, tx, j.RunID, se.Message)
 		}
 		return nil
 	})
+}
+
+// notifyFailed queues the "job failed" notification in the transaction that made the job failed,
+// inside a savepoint: any notification problem is logged and rolled back to the savepoint, so it
+// can never fail or stall the queue (notifications.md rule 4). The message carries only the stage,
+// the error class and the sanitized message. Flood collapse lives in notify.EnqueueJobFailed.
+func (q *Queue) notifyFailed(ctx context.Context, tx pgx.Tx, jobID int64, attempt int, class ErrorClass, msg string) {
+	log := q.Log
+	if log == nil {
+		log = slog.Default()
+	}
+	sp, err := tx.Begin(ctx)
+	if err != nil {
+		log.Warn("job failed notification not queued", "job_id", jobID, "err", err)
+		return
+	}
+	f := notify.FailedJob{JobID: jobID, Attempt: attempt, Class: string(class), Reason: msg}
+	err = sp.QueryRow(ctx, `SELECT r.episode_id, j.stage FROM jobs j JOIN workflow_runs r ON r.id = j.run_id WHERE j.id = $1`, jobID).Scan(&f.EpisodeID, &f.Stage)
+	if err == nil {
+		err = notify.EnqueueJobFailed(ctx, sp, f)
+	}
+	if err != nil {
+		log.Warn("job failed notification not queued", "job_id", jobID, "err", err)
+		_ = sp.Rollback(ctx)
+		return
+	}
+	if err := sp.Commit(ctx); err != nil {
+		log.Warn("job failed notification not queued", "job_id", jobID, "err", err)
+	}
 }
 
 // autoRewrite starts the next rewrite unless the user cancelled the run or the chain has reached
@@ -505,7 +542,9 @@ func (q *Queue) recoverOneExpired(ctx context.Context) (bool, error) {
 		}
 		switch to {
 		case Failed:
-			_, err = tx.Exec(ctx, `UPDATE workflow_runs SET state = $1, finished_at = now() WHERE id = $2`, RunFailed, j.RunID)
+			if _, err = tx.Exec(ctx, `UPDATE workflow_runs SET state = $1, finished_at = now() WHERE id = $2`, RunFailed, j.RunID); err == nil {
+				q.notifyFailed(ctx, tx, j.ID, j.Attempt, class, msg)
+			}
 		case Cancelled:
 			_, err = tx.Exec(ctx, `UPDATE workflow_runs SET state = $1, finished_at = now() WHERE id = $2`, RunCancelled, j.RunID)
 		}
