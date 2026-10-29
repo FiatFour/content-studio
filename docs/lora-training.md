@@ -76,7 +76,7 @@ Then open the Characters page, edit the character, and set:
 - `lora_name`: the file name in the ComfyUI loras folder, `<slug>.safetensors` (letters, digits, `_ . -` only).
 - `trigger_token`: the token used in the captions.
 
-Once the image-stage PR is merged, the image stage loads `lora_name` into the workflow and adds `trigger_token` to the prompt for that character. Until then, setting these fields stores them but they have no effect on generated images. As of this writing (origin/main at 7940cdd) that PR is not merged: the API validates and stores `lora_name` and `trigger_token`, but nothing in the image stage reads them yet.
+The image stage loads `lora_name` into the ComfyUI workflow (model only, strength `STUDIO_LORA_STRENGTH`, default 0.8) and adds `trigger_token` to the prompt for that character. At most 2 LoRAs apply per shot, and only characters that came through canon use them. The file must already be in ComfyUI's loras folder: a missing file fails the stage with a sanitized error and never falls back to no LoRA. Not yet verified against real ComfyUI and real LoRA files; that needs a manual smoke run.
 
 ## Acceptance is the owner's call
 
