@@ -74,10 +74,14 @@ func (s *subtitlesStage) Run(ctx context.Context, j *jobs.Job, progress func(int
 		return nil, err
 	}
 
+	seg, err := resolve[providers.Segmenter](d, providers.TaskSubtitles)
+	if err != nil {
+		return nil, err
+	}
 	var cues []Cue
 	for i, l := range tl.Lines {
 		progress(i, len(tl.Lines))
-		words, err := d.Segmenter.Segment(ctx, l.Text)
+		words, err := seg.Segment(ctx, l.Text)
 		if err != nil {
 			return nil, err
 		}

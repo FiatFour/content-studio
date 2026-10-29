@@ -52,6 +52,17 @@ func run(log *slog.Logger) error {
 	comfy := &providers.ComfyUI{BaseURL: cfg.ComfyURL, Checkpoint: cfg.ImageCheckpoint, Steps: cfg.ImageSteps, CFG: cfg.ImageCFG,
 		Sampler: cfg.ImageSampler, Scheduler: cfg.ImageScheduler, Client: client}
 	voice := &providers.ThaiVoice{BaseURL: cfg.ThaiVoiceURL, Client: client}
+	reg := providers.NewRegistry(cfg.CloudEnabled)
+	for _, r := range []providers.Registration{
+		{Name: "ollama", Kind: providers.KindLocal, Capability: providers.CapLLM, Impl: llm},
+		{Name: "comfyui", Kind: providers.KindLocal, Capability: providers.CapImage, Impl: comfy},
+		{Name: "thaivoice-tts", Kind: providers.KindLocal, Capability: providers.CapTTS, Impl: voice},
+		{Name: "thaivoice-segment", Kind: providers.KindLocal, Capability: providers.CapSegment, Impl: voice},
+	} {
+		if err := reg.Register(r); err != nil {
+			return err
+		}
+	}
 	if cfg.LeaseSeconds < 3 {
 		return fmt.Errorf("STUDIO_LEASE_SECONDS must be at least 3")
 	}
@@ -59,9 +70,9 @@ func run(log *slog.Logger) error {
 		Owner: workerID(), LeaseTTL: time.Duration(cfg.LeaseSeconds) * time.Second, Log: log}
 	deps := &pipeline.Deps{
 		DB: db, Store: &artifacts.Store{Root: cfg.StorageRoot}, Queue: q,
-		LLM: llm, Images: comfy, Voice: voice, Segmenter: voice,
-		GPU:   &providers.GPU{Holders: []providers.GPUHolder{llm, comfy, voice}},
-		Tools: media.Tools{FFmpeg: cfg.FFmpeg, FFprobe: cfg.FFprobe},
+		Providers: reg,
+		GPU:       &providers.GPU{Holders: []providers.GPUHolder{llm, comfy, voice}},
+		Tools:     media.Tools{FFmpeg: cfg.FFmpeg, FFprobe: cfg.FFprobe},
 		Settings: pipeline.Settings{ImageWidth: cfg.ImageWidth, ImageHeight: cfg.ImageHeight, OutWidth: 1080, OutHeight: 1920,
 			FPS: cfg.FPS, SubtitleFont: cfg.SubtitleFont, ScriptRetries: cfg.ScriptRetries, LoraStrength: cfg.LoraStrength},
 		Log: log,

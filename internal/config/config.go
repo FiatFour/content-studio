@@ -35,6 +35,10 @@ type Config struct {
 
 	ThaiVoiceURL string
 
+	// CloudEnabled is backend configuration only (default off). Even when on, no cloud adapter or
+	// budget check exists yet, so every cloud request is still refused.
+	CloudEnabled bool
+
 	// DiscordWebhookURL is a secret (notifications.md). Env only; never log or return it.
 	DiscordWebhookURL string
 
@@ -79,6 +83,13 @@ func Load() (Config, error) {
 		}
 	}
 	var err error
+	switch v := os.Getenv("STUDIO_CLOUD_ENABLED"); v {
+	case "", "false":
+	case "true":
+		c.CloudEnabled = true
+	default:
+		return c, fmt.Errorf("STUDIO_CLOUD_ENABLED must be true or false")
+	}
 	ints := []struct {
 		key string
 		def int

@@ -19,8 +19,8 @@ func (h *harness) count(t *testing.T, query string, args ...any) int {
 	return n
 }
 
-func (h *harness) imageCalls() int { return h.deps.Images.(*fake.Images).Calls }
-func (h *harness) voiceCalls() int { return h.deps.Voice.(*fake.Voice).Calls }
+func (h *harness) imageCalls() int { return h.images.(*fake.Images).Calls }
+func (h *harness) voiceCalls() int { return h.voice.(*fake.Voice).Calls }
 
 // Re-enqueueing every completed stage of a finished run must produce no new artifact and call no
 // provider: the fakes' call counters and the artifact count stay exactly where they were.
