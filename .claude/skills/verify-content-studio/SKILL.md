@@ -24,7 +24,7 @@ The instance has no worker and no models, so it uses no GPU and an episode stays
 
 ## Drive
 
-`node $SK/scripts/drive.mjs $E <flow>` with flow `shell` or `create-episode`. Exit 0 means all checks passed. Feature recipes and the handles they use are in `$SK/features/README.md`. Add a flow to `drive.mjs` and a feature file together.
+`node $SK/scripts/drive.mjs $E <flow>` with flow `shell`, `create-episode` or `auth`. `auth` starts logged out, needs a fresh instance (it enrolls a passkey) and is reached at `http://localhost:$PORT`, not `127.0.0.1`. Exit 0 means all checks passed. Feature recipes and the handles they use are in `$SK/features/README.md`. Add a flow to `drive.mjs` and a feature file together.
 
 ## Evidence
 
