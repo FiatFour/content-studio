@@ -8,7 +8,6 @@ M0 measurements and recommendations for each open item are in `docs/assessment.m
 
 | # | Decision | Blocks | Notes |
 |---|---|---|---|
-| D8 | **Character consistency technique** (IP-Adapter vs. LoRA vs. other). | M1b | Decided after the M1b spike. |
 | D9 | **Auth approach.** M1a has none (the localhost admin token was removed 2026-10-28). | M2, or earlier if exposed | Not needed while the app is bound to localhost. Required before it is reachable from a phone, Tailscale, LAN or a server. For a solo owner prefer a passkey or password + session cookie with CSRF protection and HTTPS, not full user management. |
 | D10 | **First cloud provider**, if any. | M2 | Verify current pricing and commercial-use terms from official docs before adding. |
 
@@ -16,6 +15,7 @@ M0 measurements and recommendations for each open item are in `docs/assessment.m
 
 | # | Decision | Answer | Date |
 |---|---|---|---|
+| D8 | **Character consistency technique** | Per-character LoRA (option B of the M1b spike). Evidence: `spikes/m1b-consistency/RESULTS.md`. Costs to plan for: about 15 min of exclusive GPU per character (7.6 GB VRAM), a curated image set per character (the spike's set came from IP-Adapter and biased pose), and training only behind a memory limit (`systemd-run` `MemoryMax`) because an unguarded run crashed WSL. A LoRA does not fix style drift or the photographic look. | 2026-10-29 |
 | D12 | **Notification channel** | Discord, via outbound channel webhooks only (no bot, no interactions). See `notifications.md`. | 2026-10-26 |
 | D14 | **UI design direction** | Navy cartoon UI with thick-outlined tiles; Thai-first; agent tower visualization for M4. See `ui.md` and the "AI Content Studio UI" design canvas. | 2026-10-26 |
 | D13 | **UI language** | Thai and English, switchable from a TH/EN toggle in the top bar; Thai is the default. The choice is saved in the backend per user, not only in the browser. Technical identifiers (policies, states, hashes, logs) stay in English. | 2026-10-26 |
