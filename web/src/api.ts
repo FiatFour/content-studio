@@ -20,7 +20,7 @@ export const contentUrl = (artifactId: number) => `/api/artifacts/${artifactId}/
 
 export type Job = {
   id: number; stage: string; state: string; attempt: number; progress_done: number; progress_total: number;
-  provider: string | null; model: string | null; error_class: string | null; error_message: string | null;
+  provider: string | null; model: string | null; error_class: string | null; error_message: string | null; wait_reason: string | null;
   started_at: string | null; finished_at: string | null; updated_at: string;
 };
 export type Run = {

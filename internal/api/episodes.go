@@ -35,6 +35,7 @@ type jobDetail struct {
 	Model         *string    `json:"model"`
 	ErrorClass    *string    `json:"error_class"`
 	ErrorMessage  *string    `json:"error_message"`
+	WaitReason    *string    `json:"wait_reason"`
 	StartedAt     *time.Time `json:"started_at"`
 	FinishedAt    *time.Time `json:"finished_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
@@ -71,14 +72,14 @@ func (s *Server) loadRuns(ctx context.Context, episodeID int64, limit int) ([]ru
 		if runs[i].Kind == "rerender" {
 			runs[i].Stages = pipeline.FictionalSeries.Rerender
 		}
-		rows, err := s.DB.Query(ctx, `SELECT id, stage, state, attempt_count, progress_done, progress_total, provider, model, error_class, error_message,
+		rows, err := s.DB.Query(ctx, `SELECT id, stage, state, attempt_count, progress_done, progress_total, provider, model, error_class, error_message, wait_reason,
 			started_at, finished_at, updated_at FROM jobs WHERE run_id = $1 ORDER BY seq`, runs[i].ID)
 		if err != nil {
 			return nil, err
 		}
 		runs[i].Jobs, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (jobDetail, error) {
 			var j jobDetail
-			err := r.Scan(&j.ID, &j.Stage, &j.State, &j.Attempt, &j.ProgressDone, &j.ProgressTotal, &j.Provider, &j.Model, &j.ErrorClass, &j.ErrorMessage,
+			err := r.Scan(&j.ID, &j.Stage, &j.State, &j.Attempt, &j.ProgressDone, &j.ProgressTotal, &j.Provider, &j.Model, &j.ErrorClass, &j.ErrorMessage, &j.WaitReason,
 				&j.StartedAt, &j.FinishedAt, &j.UpdatedAt)
 			j.ErrorMessage = scrubPaths(j.ErrorMessage)
 			return j, err

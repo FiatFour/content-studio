@@ -4,7 +4,7 @@ import "testing"
 
 func TestTransitionEveryPair(t *testing.T) {
 	allowed := map[[2]State]bool{
-		{Queued, Running}: true, {Queued, Cancelled}: true,
+		{Queued, Running}: true, {Queued, Cancelled}: true, {Queued, WaitingForResource}: true,
 		{Running, Completed}: true, {Running, Failed}: true, {Running, RetryScheduled}: true, {Running, Queued}: true,
 		{Running, WaitingForResource}: true, {Running, WaitingForHuman}: true, {Running, Cancelled}: true,
 		{WaitingForResource, Queued}: true, {WaitingForResource, Cancelled}: true,

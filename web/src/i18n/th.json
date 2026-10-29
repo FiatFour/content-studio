@@ -70,6 +70,7 @@
   "episode.model": "โมเดล",
   "episode.progress": "ความคืบหน้า {done}/{total}",
   "episode.noProgress": "ยังไม่มีตัวนับความคืบหน้าสำหรับขั้นนี้",
+  "episode.waitingWhy": "รอคิว",
   "episode.shots": "ภาพรายช็อต",
   "episode.noShots": "ยังไม่มีภาพ",
   "episode.artifacts": "ไฟล์ที่ได้แล้ว",

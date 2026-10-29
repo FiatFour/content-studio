@@ -21,7 +21,7 @@
 Legal transitions (enforce in one Go function, unit-test every pair):
 
 ```
-queued               -> running | cancelled
+queued               -> running | waiting_for_resource | cancelled
 running              -> completed | failed | retry_scheduled | queued (lease expired) | waiting_for_resource | waiting_for_human | cancelled
 waiting_for_resource -> queued | cancelled
 waiting_for_human    -> queued | completed | cancelled
@@ -53,6 +53,8 @@ Progress is real stage progress (e.g. 4 of 12 images done). Never animate a fake
 - Per-resource concurrency limits: GPU slot = 1 by default; per-provider limits are configurable.
 
 Status (implemented, migration 0006): `Claim` stamps `lease_owner` and `lease_expires_at` (`STUDIO_LEASE_SECONDS`, default 60). The worker heartbeats every third of the TTL. Every `RunOne` first calls `Queue.RecoverExpired`, so any live worker recovers a dead worker's job: back to `queued` (the attempt is closed with class `worker_restart`), or `failed` with a reason once `STUDIO_MAX_ATTEMPTS` is used up, or `cancelled` if the run's cancel was requested. `Complete` and `Fail` are fenced on (attempt, lease owner); a worker that lost its lease gets `ErrLeaseLost` and writes nothing, and its stage context is cancelled. Consequences: after a crash the job waits up to one TTL before another worker takes it (no immediate takeover on restart, because a restarted worker cannot tell its predecessor from a live peer), and a graceful shutdown also leaves the lease to expire. A stage that ignores context cancellation after losing its lease can still write files into its attempt directory; DB state stays correct because of the fence.
+
+Status (resource limits implemented, migration 0007): `Plan.Resources` maps a stage to the resource it holds (`script`, `tts`, `images` hold `gpu`); `jobs.resource` records it. `resource_limits.max_concurrent` is the limit (seeded `gpu` = 1; a resource with no row gets 1). `Claim` decides under a per-resource Postgres advisory lock, so two workers can never both take the last slot. A queued job whose resource is full goes `queued -> waiting_for_resource` with `wait_reason` (shown in the API as `wait_reason` and on the episode page) and the next job is tried, so CPU stages never wait behind GPU ones. Every `Claim` wakes waiting jobs back to `queued` when their resource has a free slot. A job counts against its resource only while `running`, so a crashed worker's slot frees when its lease expires. The in-process `providers.GPU` model handoff stays: it still unloads one model before loading the next inside one worker. Per-provider limits (M2 providers slice) will be more rows in the same table. Limits are changed with SQL for now; there is no settings UI. Limitation: a Claim that touches two different resources in one transaction takes two advisory locks in scan order, so two workers could deadlock; Postgres aborts one and the worker loop retries (only one resource exists today).
 
 ### Error classes
 | Class | Retry? |

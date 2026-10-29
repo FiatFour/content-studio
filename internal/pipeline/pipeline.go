@@ -24,6 +24,8 @@ var FictionalSeries = jobs.Plan{
 	Profile:  "fictional_series",
 	Full:     []string{"script", "tts", "images", "subtitles", "render", "qa"},
 	Rerender: []string{"render", "qa"},
+	// The LLM, image model and voice model each need the GPU; render and qa use CPU (ffmpeg).
+	Resources: map[string]string{"script": "gpu", "tts": "gpu", "images": "gpu"},
 }
 
 type Settings struct {

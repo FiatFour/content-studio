@@ -70,6 +70,7 @@
   "episode.model": "Model",
   "episode.progress": "Progress {done}/{total}",
   "episode.noProgress": "This stage has no progress counter yet",
+  "episode.waitingWhy": "Waiting",
   "episode.shots": "Shots",
   "episode.noShots": "No images yet",
   "episode.artifacts": "Artifacts so far",
