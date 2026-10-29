@@ -123,7 +123,7 @@ func TestAuditRowsForEveryAuditedAction(t *testing.T) {
 		if err := rows.Scan(&actor, &detail); err != nil {
 			t.Fatal(err)
 		}
-		if actor != "owner" || strings.Contains(detail, "/tmp") || strings.Contains(detail, "storage_path") || strings.Contains(detail, "export_path") {
+		if actor != "test-session" || strings.Contains(detail, "/tmp") || strings.Contains(detail, "storage_path") || strings.Contains(detail, "export_path") {
 			t.Fatalf("bad audit row: actor %q detail %s", actor, detail)
 		}
 	}
@@ -142,7 +142,7 @@ func TestAuditListIsNewestFirstAndPaginated(t *testing.T) {
 		t.Fatalf("%d %v", code, body)
 	}
 	first, second := entries[0].(map[string]any), entries[1].(map[string]any)
-	if first["id"].(float64) < second["id"].(float64) || first["action"] != "settings.update" || first["actor"] != "owner" {
+	if first["id"].(float64) < second["id"].(float64) || first["action"] != "settings.update" || first["actor"] != "test-session" {
 		t.Fatalf("not newest first: %v", entries)
 	}
 	if first["detail"].(map[string]any)["ui_lang"] != "en" {

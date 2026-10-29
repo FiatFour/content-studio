@@ -2,7 +2,7 @@
 # Starts an ISOLATED studio API + web UI for verification: its own port, its own throwaway Postgres
 # database, its own storage dirs, No worker and no AI models are started, so a
 # created episode stays "queued" and no GPU is touched. The user's `make dev` stack is never used.
-# Prints the path of the env file that doctor.sh, drive.mjs and cleanup.sh take as their argument.
+# Also mints a test session for the API (env file key SESSION). Prints the path of the env file that doctor.sh, drive.mjs and cleanup.sh take as their argument.
 # If any step fails, everything created so far is removed again.
 set -euo pipefail
 umask 077
@@ -34,6 +34,12 @@ sed -i "s/^PID=.*/PID=$PID/" "$DIR/env"
 for _ in $(seq 40); do
   # Healthy means OUR pid owns the port, not just that something answers on it.
   if ss -ltnp 2>/dev/null | grep -q "127.0.0.1:$PORT .*pid=$PID," && curl -sf -m 1 "http://127.0.0.1:$PORT/api/health" >/dev/null; then
+    # The API needs a session. Mint a throwaway one straight into THIS throwaway database (the helper
+    # refuses any database that is not verify_*/studio_restore_*). The server has no auth bypass.
+    # The token lives only in the mode-600 env file ($DIR/env, umask 077 above).
+    TOKEN=$(STUDIO_DATABASE_URL=postgres://studio:studio@127.0.0.1:5433/$DB go run ./scripts/testsession)
+    [ -n "$TOKEN" ] || { echo "could not create a test session" >&2; exit 1; }
+    echo "SESSION=$TOKEN" >>"$DIR/env"
     ok=1; echo "$DIR/env"; exit 0
   fi
   sleep 0.5

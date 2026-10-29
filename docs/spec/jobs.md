@@ -115,7 +115,7 @@ Simulate each and assert no corrupted state:
 | Missing media asset | `TestFailureMissingMediaAssetFailsTheStageWithoutOutput` (pipeline), `TestExportRefusedWhenApprovedFileIsMissing` (review) | covered |
 | Corrupt output file | `TestFailureCorruptPNGFromImageModelIsRejected`, `TestFailureCorruptWAVFromVoiceIsRejected`, `TestFailureCorruptMP4IsCaughtByQA` (pipeline) | covered |
 | Concurrent jobs competing for the GPU | `TestSimultaneousClaimsTakeOnlyOneGPUSlot`, `TestCompetingWorkersNeverShareTheGPU` (jobs) | covered (claims); budget half pending #18-#21 |
-| Unauthorized approval attempt | `TestApprovalIsBoundToTheExactArtifactHash` (review): approval is bound to the exact artifact hash | hash binding covered; **who may approve is pending D9** (no auth yet) |
+| Unauthorized approval attempt | `TestApprovalIsBoundToTheExactArtifactHash` (review): approval is bound to the exact artifact hash; `TestEverySensitiveRouteRefusesWithoutSession` (api): `POST /api/videos/:id/decision` and `/export` answer 401 without a session | covered (hash binding and session required, D9) |
 | Cloud provider disabled | | pending #18-#21 |
 | Budget exhausted | | pending #18-#21 |
 | Provider timeout and uncertain outcome | | pending #18-#21 |

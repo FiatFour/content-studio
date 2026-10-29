@@ -15,6 +15,7 @@ import (
 
 	"github.com/fiat/content-studio/internal/api"
 	"github.com/fiat/content-studio/internal/artifacts"
+	"github.com/fiat/content-studio/internal/auth/authtest"
 	"github.com/fiat/content-studio/internal/jobs"
 	"github.com/fiat/content-studio/internal/pipeline"
 	"github.com/fiat/content-studio/internal/review"
@@ -32,7 +33,8 @@ func serverDB(t *testing.T) (*httptest.Server, *pgxpool.Pool) {
 	s := &api.Server{DB: db, Queue: &jobs.Queue{DB: db, Plan: pipeline.FictionalSeries, MaxAttempts: 3}, Store: st,
 		Review: &review.Service{DB: db, Store: st, ExportDir: t.TempDir()},
 		Log:    slog.New(slog.NewTextHandler(io.Discard, nil))}
-	ts := httptest.NewServer(s.Echo())
+	s.Auth = authtest.Service(t, db)
+	ts := httptest.NewServer(authtest.AutoLogin(s.Echo(), authtest.Session(t, s.Auth)))
 	t.Cleanup(ts.Close)
 	return ts, db
 }

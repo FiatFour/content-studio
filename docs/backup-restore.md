@@ -77,6 +77,7 @@ To replace the live system after a disaster (manual on purpose, because it is de
 
 1. Restores it into a fresh database `studio_restore_<time>_<random>` and a fresh temp directory, using `restore.sh` and its guards.
 2. Builds and starts `cmd/server` against them on the first free port in 18080-18180 (never the live address).
+2a. The API needs a session (D9). The script mints a throwaway one with `scripts/testsession` directly into the restored database (the helper refuses any database that is not a loopback `studio_restore_*`, `studio_rt_src_*` or `verify_*` throwaway, so the live database cannot be used) and passes it to curl through a mode-600 header file. The server itself has no bypass.
 3. Finds the newest video whose latest decision is `approved`.
 4. Downloads it through `GET /api/artifacts/:id/content`, and checks that its sha256 equals the approved hash (and the artifact row's hash), that `/api/videos/:id/review` answers, and that `ffprobe` reads it.
 5. Drops only the databases it created and deletes its temp directory, even on failure.

@@ -16,11 +16,11 @@ Primary: the web UI (hash routes `#/`, `#/episodes`, `#/episodes/<id>`, `#/revie
 1. One-time: `$SK/scripts/setup-browser.sh`. It installs Playwright 1.63 and Chromium into `var/verify/tools` and unpacks `libnss3`/`libnspr4` without sudo. Playwright older than 1.63 has no build for this Ubuntu.
 2. `E=$($SK/scripts/launch.sh)`. It creates database `verify_<id>` in the `studio-pg` container, builds and starts `server` on a free loopback port with its own storage, and prints the env file path. Ready means `/api/health` is ok. Migrations ran on start.
 
-The instance has no worker and no models, so it uses no GPU and an episode stays `queued`. Two instances can run side by side (own port, own database). Never drive `127.0.0.1:8080`: that is the user's live stack with real data and a GPU job possibly running.
+The instance has no worker and no models, so it uses no GPU and an episode stays `queued`. The API needs a passkey session (D9). `launch.sh` mints a throwaway session with `scripts/testsession` straight into the instance's own `verify_*` database and stores it as `SESSION=` in the mode-600 env file; `drive.mjs` puts it in the browser cookie jar and on its API calls (plus an `Origin` header, which every state-changing request needs). The helper refuses any database that is not a loopback `verify_*`/`studio_restore_*` throwaway, and the server has no bypass flag, so this cannot be used on the live stack. Never print `SESSION`. Two instances can run side by side (own port, own database). Never drive `127.0.0.1:8080`: that is the user's live stack with real data and a GPU job possibly running.
 
 ## Doctor
 
-`$SK/scripts/doctor.sh $E` is read-only. It checks the pid is alive and owns the port, health is ok, an empty POST gets 400 (no auth wall), the UI is served, and the database exists. Run it first, and again whenever a flow behaves oddly.
+`$SK/scripts/doctor.sh $E` is read-only. It checks the pid is alive and owns the port, health is ok, an unauthenticated POST gets 401 and an empty POST with the test session gets 400, the UI is served, and the database exists. Run it first, and again whenever a flow behaves oddly.
 
 ## Drive
 

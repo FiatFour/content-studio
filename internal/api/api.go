@@ -1,4 +1,5 @@
-// Package api is the HTTP API the web UI uses. It binds to localhost only and has no authentication in M1a.
+// Package api is the HTTP API the web UI uses. It binds to localhost only. Every /api route except a small
+// public allowlist (auth.go) needs a passkey session; state-changing requests also need an allowed Origin.
 package api
 
 import (
@@ -17,12 +18,14 @@ import (
 
 	"github.com/fiat/content-studio/internal/artifacts"
 	"github.com/fiat/content-studio/internal/audit"
+	"github.com/fiat/content-studio/internal/auth"
 	"github.com/fiat/content-studio/internal/jobs"
 	"github.com/fiat/content-studio/internal/notify"
 	"github.com/fiat/content-studio/internal/review"
 )
 
-const owner = audit.Owner
+// settingsUser is the user_settings row key. The app has exactly one owner; this is data, not identity.
+const settingsUser = audit.Owner
 
 type Server struct {
 	DB          *pgxpool.Pool
@@ -33,16 +36,27 @@ type Server struct {
 	WebDir      string
 	Log         *slog.Logger
 	Notify      *notify.Service // nil disables the /api/notifications routes
+	Auth        *auth.Service   // nil refuses every non-public /api request (fail closed)
 }
 
 func (s *Server) Echo() *echo.Echo {
 	e := echo.New()
 	e.HideBanner, e.HidePort = true, true
 	e.HTTPErrorHandler = s.errorHandler
-	e.Use(s.logRequests)
+	e.Use(s.logRequests, s.originGuard, s.requireSession)
 
 	a := e.Group("/api")
 	a.GET("/health", s.health)
+	if s.Auth != nil {
+		a.GET("/auth/status", s.authStatus)
+		a.POST("/auth/login/begin", s.loginBegin)
+		a.POST("/auth/login/finish", s.loginFinish)
+		a.POST("/auth/enroll/begin", s.enrollBegin)
+		a.POST("/auth/enroll/finish", s.enrollFinish)
+		a.POST("/auth/logout", s.logout)
+		a.GET("/auth/credentials", s.listCredentials)
+		a.DELETE("/auth/credentials/:id", s.deleteCredential)
+	}
 	a.GET("/system", s.system)
 	a.GET("/settings", s.getSettings)
 	a.GET("/episodes", s.listEpisodes)
@@ -151,11 +165,11 @@ func (s *Server) health(c echo.Context) error {
 
 func (s *Server) getSettings(c echo.Context) error {
 	lang := "th"
-	err := s.DB.QueryRow(c.Request().Context(), `SELECT ui_lang FROM user_settings WHERE user_id = $1`, owner).Scan(&lang)
+	err := s.DB.QueryRow(c.Request().Context(), `SELECT ui_lang FROM user_settings WHERE user_id = $1`, settingsUser).Scan(&lang)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
-	return c.JSON(http.StatusOK, map[string]string{"ui_lang": lang, "user": owner})
+	return c.JSON(http.StatusOK, map[string]string{"ui_lang": lang, "user": settingsUser})
 }
 
 func (s *Server) putSettings(c echo.Context) error {
@@ -171,10 +185,10 @@ func (s *Server) putSettings(c echo.Context) error {
 	ctx := c.Request().Context()
 	err := pgx.BeginFunc(ctx, s.DB, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `INSERT INTO user_settings (user_id, ui_lang) VALUES ($1, $2)
-			ON CONFLICT (user_id) DO UPDATE SET ui_lang = EXCLUDED.ui_lang`, owner, req.UILang); err != nil {
+			ON CONFLICT (user_id) DO UPDATE SET ui_lang = EXCLUDED.ui_lang`, settingsUser, req.UILang); err != nil {
 			return err
 		}
-		return audit.Record(ctx, tx, audit.Entry{Actor: owner, Action: "settings.update", TargetType: "settings", Detail: map[string]any{"ui_lang": req.UILang}})
+		return audit.Record(ctx, tx, audit.Entry{Actor: actor(c), Action: "settings.update", TargetType: "settings", Detail: map[string]any{"ui_lang": req.UILang}})
 	})
 	if err != nil {
 		return err
@@ -189,7 +203,7 @@ func (s *Server) cancelRun(c echo.Context) error {
 	}
 	ctx := c.Request().Context()
 	err = s.Queue.RequestCancelTx(ctx, id, func(tx pgx.Tx) error {
-		return audit.Record(ctx, tx, audit.Entry{Actor: owner, Action: "job.cancel", TargetType: "run", TargetID: id})
+		return audit.Record(ctx, tx, audit.Entry{Actor: actor(c), Action: "job.cancel", TargetType: "run", TargetID: id})
 	})
 	if err != nil {
 		return err
@@ -204,7 +218,7 @@ func (s *Server) retryRun(c echo.Context) error {
 	}
 	ctx := c.Request().Context()
 	runID, err := s.Queue.ResumeTx(ctx, id, func(tx pgx.Tx, resumed int64) error {
-		return audit.Record(ctx, tx, audit.Entry{Actor: owner, Action: "job.retry", TargetType: "run", TargetID: id, Detail: map[string]any{"resumed_run_id": resumed}})
+		return audit.Record(ctx, tx, audit.Entry{Actor: actor(c), Action: "job.retry", TargetType: "run", TargetID: id, Detail: map[string]any{"resumed_run_id": resumed}})
 	})
 	if err != nil {
 		return err

@@ -125,6 +125,15 @@ done
 (( up == 1 )) || die "server did not become healthy within 30 s"
 echo "server up on 127.0.0.1:$port against $restored_db"
 
+# The API needs a session. A throwaway session is minted straight into the RESTORED database by
+# scripts/testsession, which refuses any database that is not a studio_restore_/verify_ throwaway on a
+# loopback host (the live database "studio" can never match). The server has no auth bypass. The token
+# goes to a mode-600 header file inside $work, never onto a command line or into the output.
+go build -o "$work/bin/" ./scripts/testsession
+( umask 077; printf 'Cookie: studio_session=%s\n' "$(env STUDIO_DATABASE_URL="$(url_for_db "$restored_db")" "$work/bin/testsession")" >"$work/auth.hdr" )
+[[ -s $work/auth.hdr ]] || die "could not create a throwaway session in the restored database"
+auth=(-H "@$work/auth.hdr")
+
 # Newest video whose latest decision is 'approved'.
 row=$(psql_q "$restored_db" "SELECT a.id, ap.sha256, a.sha256, a.episode_id FROM approvals ap JOIN artifacts a ON a.id = ap.artifact_id
   WHERE a.type = 'video' AND ap.decision = 'approved' AND ap.id = (SELECT max(id) FROM approvals WHERE artifact_id = a.id)
@@ -135,8 +144,8 @@ valid_id "$art_id" && valid_id "$episode_id" || die "unexpected ids from databas
 [[ $approved_sha =~ ^[0-9a-f]{64}$ ]] || die "approval has no valid sha256"
 echo "approved episode id=$episode_id, video artifact id=$art_id, approved sha256=$approved_sha"
 
-curl -fsS --max-time 30 -o /dev/null "$base/videos/$art_id/review" || die "review endpoint failed for the restored artifact"
-curl -fsS --max-time 600 -o "$work/download.bin" "$base/artifacts/$art_id/content" || die "could not download the approved artifact through the API"
+curl -fsS --max-time 30 "${auth[@]}" -o /dev/null "$base/videos/$art_id/review" || die "review endpoint failed for the restored artifact"
+curl -fsS --max-time 600 "${auth[@]}" -o "$work/download.bin" "$base/artifacts/$art_id/content" || die "could not download the approved artifact through the API"
 got=$(sha256sum "$work/download.bin" | cut -d' ' -f1)
 echo "downloaded sha256=$got"
 [[ $got == "$approved_sha" ]] || die "HASH MISMATCH: downloaded file differs from the approved hash"
