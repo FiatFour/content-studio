@@ -77,7 +77,7 @@ func run(log *slog.Logger) error {
 		ns.Notifier, ns.Suffix = d, d.Suffix()
 	}
 	go ns.Run(ctx)
-	w := &jobs.Worker{Queue: q, Stages: deps.Stages(), Log: log, PollInterval: cfg.PollInterval, RetryDelay: 10 * time.Second}
+	w := &jobs.Worker{Queue: q, Stages: deps.Stages(), Log: log, PollInterval: cfg.PollInterval}
 	log.Info("worker started", "llm", cfg.LLMModel, "checkpoint", cfg.ImageCheckpoint)
 	return w.Run(ctx)
 }

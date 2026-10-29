@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -52,6 +53,10 @@ type Queue struct {
 	Owner string
 	// LeaseTTL is how long a claimed job stays this worker's without a heartbeat. Zero means DefaultLeaseTTL.
 	LeaseTTL time.Duration
+	// Delay and Jitter replace the retry backoff and its random source. They exist for tests;
+	// production leaves both nil.
+	Delay  func(se *StageError, attemptsUsed int) time.Duration
+	Jitter func() float64
 }
 
 // DefaultLeaseTTL is long enough that a busy but healthy worker never misses a heartbeat (they come
@@ -131,7 +136,8 @@ func (q *Queue) Claim(ctx context.Context) (*Job, error) {
 		if err := Transition(WaitingForResource, Queued); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `UPDATE jobs j SET state = $1, wait_reason = NULL, updated_at = now() WHERE j.state = $2
+		if _, err := tx.Exec(ctx, `UPDATE jobs j SET state = $1, wait_reason = NULL, run_after = NULL, updated_at = now() WHERE j.state = $2
+			AND (j.run_after IS NULL OR j.run_after <= now())
 			AND (SELECT count(*) FROM jobs r WHERE r.state = $3 AND r.resource = j.resource)
 				< COALESCE((SELECT max_concurrent FROM resource_limits WHERE resource = j.resource), 1)`,
 			Queued, WaitingForResource, Running); err != nil {
@@ -283,35 +289,61 @@ func (q *Queue) Complete(ctx context.Context, j *Job, persist func(pgx.Tx) error
 	})
 }
 
-// Fail records a stage failure. A retryable failure under the attempt limit is scheduled again;
-// anything else fails the job and its run with the sanitized reason.
-func (q *Queue) Fail(ctx context.Context, j *Job, se *StageError, delay time.Duration) error {
+// retryDelay is the wait before the next attempt after the attemptsUsed-th failure.
+func (q *Queue) retryDelay(se *StageError, attemptsUsed int) time.Duration {
+	if q.Delay != nil {
+		return q.Delay(se, attemptsUsed)
+	}
+	jitter := rand.Float64()
+	if q.Jitter != nil {
+		jitter = q.Jitter()
+	}
+	return RetryDelay(se.Class, attemptsUsed, se.RetryAfter, jitter)
+}
+
+// Fail records a stage failure and applies the error class's remedy. A retryable class under the
+// attempt bound goes to retry_scheduled (or waiting_for_resource for insufficient local resources)
+// with run_after set by exponential backoff and jitter; at the bound, or for any class that does
+// not retry (including uncertain_outcome), the job and its run fail with the sanitized reason.
+func (q *Queue) Fail(ctx context.Context, j *Job, se *StageError) error {
 	remedy := se.Class.Remedy()
 	return pgx.BeginFunc(ctx, q.DB, func(tx pgx.Tx) error {
 		cur, err := lockRunning(ctx, tx, j)
 		if err != nil {
 			return err
 		}
+		used := j.Attempt - j.AttemptBase
 		to := Failed
-		if remedy == CancelRun {
+		switch {
+		case remedy == CancelRun:
 			to = Cancelled
-		} else if remedy == RetryStage && j.Attempt-j.AttemptBase < q.MaxAttempts {
+		case remedy == RetryStage && used < q.MaxAttempts:
 			to = RetryScheduled
+		case remedy == WaitResource && used < q.MaxAttempts:
+			to = WaitingForResource
 		}
 		if err := Transition(cur, to); err != nil {
 			return err
 		}
+		delay := time.Duration(0)
+		waitReason := ""
+		if to == RetryScheduled || to == WaitingForResource {
+			delay = q.retryDelay(se, used)
+		}
+		if to == WaitingForResource {
+			waitReason = fmt.Sprintf("not enough local resources (attempt %d of %d); retrying after backoff", used, q.MaxAttempts)
+		}
 		if _, err := tx.Exec(ctx, `UPDATE jobs SET state = $1, error_class = $2, error_message = $3, updated_at = now(),
-			lease_owner = NULL, lease_expires_at = NULL,
-			run_after = CASE WHEN $1 = 'retry_scheduled' THEN now() + $4::interval END,
-			finished_at = CASE WHEN $1 = 'retry_scheduled' THEN NULL ELSE now() END WHERE id = $5`,
-			to, se.Class, se.Message, fmt.Sprintf("%d milliseconds", delay.Milliseconds()), j.ID); err != nil {
+			lease_owner = NULL, lease_expires_at = NULL, wait_reason = NULLIF($6, ''),
+			run_after = CASE WHEN $1 IN ('retry_scheduled', 'waiting_for_resource') THEN now() + $4::interval END,
+			finished_at = CASE WHEN $1 IN ('retry_scheduled', 'waiting_for_resource') THEN NULL ELSE now() END WHERE id = $5`,
+			to, se.Class, se.Message, leaseInterval(delay), j.ID, waitReason); err != nil {
 			return err
 		}
 		if err := finishAttempt(ctx, tx, j, to, se.Class, se.Message); err != nil {
 			return err
 		}
-		if to == RetryScheduled {
+		if to == RetryScheduled || to == WaitingForResource {
 			return nil
 		}
 		runState := RunFailed

@@ -28,7 +28,7 @@ func ok() stageFunc { return func(context.Context, *jobs.Job) error { return nil
 
 func newWorker(db *pgxpool.Pool, stages map[string]jobs.Stage) *jobs.Worker {
 	return &jobs.Worker{
-		Queue:  &jobs.Queue{DB: db, Plan: plan, MaxAttempts: 3},
+		Queue:  &jobs.Queue{DB: db, Plan: plan, MaxAttempts: 3, Delay: noDelay},
 		Stages: stages,
 		Log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
@@ -445,7 +445,7 @@ func TestACancelledRunIsNotRewrittenAfterAWrongLengthFailure(t *testing.T) {
 	if _, err := db.Exec(context.Background(), `UPDATE workflow_runs SET cancel_requested = true WHERE id = $1`, runID); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.Fail(context.Background(), j, jobs.Errorf(jobs.ErrScriptDuration, nil, "too short"), 0); err != nil {
+	if err := q.Fail(context.Background(), j, jobs.Errorf(jobs.ErrScriptDuration, nil, "too short")); err != nil {
 		t.Fatal(err)
 	}
 	var n int

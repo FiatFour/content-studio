@@ -18,7 +18,7 @@ var gpuPlan = jobs.Plan{Profile: "fictional_series", Full: []string{"a", "b", "c
 	Resources: map[string]string{"a": "gpu", "b": "gpu"}}
 
 func gpuQueue(db *pgxpool.Pool, owner string) *jobs.Queue {
-	return &jobs.Queue{DB: db, Plan: gpuPlan, MaxAttempts: 3, Owner: owner, LeaseTTL: time.Minute}
+	return &jobs.Queue{DB: db, Plan: gpuPlan, MaxAttempts: 3, Owner: owner, LeaseTTL: time.Minute, Delay: noDelay}
 }
 
 func jobWait(t *testing.T, db *pgxpool.Pool, runID int64, stage string) (state string, reason *string) {
