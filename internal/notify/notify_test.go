@@ -250,7 +250,7 @@ func TestEnqueueIsIdempotentAndHonoursToggles(t *testing.T) {
 	if err != nil || len(toggles) != len(notify.Events) {
 		t.Fatal(toggles, err)
 	}
-	if err := notify.Enqueue(ctx, s.DB, notify.JobFailed, "x", ep, 1, "", ""); err == nil {
+	if err := notify.Enqueue(ctx, s.DB, notify.DailySummary, "x", ep, 1, "", ""); err == nil {
 		t.Fatal("an unwired event must not be enqueueable")
 	}
 }

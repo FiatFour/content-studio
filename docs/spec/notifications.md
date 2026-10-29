@@ -61,7 +61,7 @@ Backend only; the Providers & budget screen UI is not built yet.
 |---|---|
 | Episode ready for review (QA passed) | **Wired** in the QA stage, queued in the same transaction that marks the video `qa_passed` |
 | Version approved / exported | **Wired** in the API decision and export handlers (default off) |
-| Job failed (retries exhausted) | Not implemented. Needs a hook in the queue's retries-exhausted path, plus the one-per-episode-per-10-minutes collapse |
+| Job failed (retries exhausted) | **Wired** in the queue (`Queue.Fail` and lease recovery), queued in the same transaction that sets the job `failed`, inside a savepoint so a notification problem is logged and never fails the queue. Retries, cancels and waits do not notify. Collapse: `job_failed_collapse` (migration 0013) allows one message per episode per 10 minutes; failures inside the window are counted and the count is added to the next message ("N more failure(s) since the last message were not reported"). Nothing is recorded while the toggle is off. The message holds the stage, error class and sanitized message only (paths and URLs replaced, first line). A failure that triggers an automatic rewrite still notifies, once per window |
 | Uncertain paid-API outcome | Not implemented (budget/provider work) |
 | Budget threshold crossed | Not implemented (budget work) |
 | Emergency stop on/off | Not implemented (kill switch does not exist yet) |

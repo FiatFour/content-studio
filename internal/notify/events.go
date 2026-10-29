@@ -45,7 +45,7 @@ type EventInfo struct {
 // Events is the full list from notifications.md.
 var Events = []EventInfo{
 	{EpisodeReady, true, colorAmber, true},
-	{JobFailed, true, colorRed, false},         // needs the queue's retries-exhausted hook
+	{JobFailed, true, colorRed, true},          // raised by the queue when a job becomes failed
 	{UncertainPaid, true, colorRed, false},     // M2 provider budget work
 	{BudgetThreshold, true, colorAmber, false}, // M2 budget work
 	{EmergencyStop, true, colorRed, false},     // M2 kill switch
