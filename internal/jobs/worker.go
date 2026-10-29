@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -25,13 +26,6 @@ type Worker struct {
 
 // Run processes jobs one at a time until ctx ends. One worker means one GPU-heavy stage at a time.
 func (w *Worker) Run(ctx context.Context) error {
-	n, err := w.Queue.RecoverInterrupted(ctx)
-	if err != nil {
-		return err
-	}
-	if n > 0 {
-		w.Log.Warn("recovered interrupted jobs", "count", n)
-	}
 	for {
 		if ctx.Err() != nil {
 			return nil
@@ -52,6 +46,13 @@ func (w *Worker) Run(ctx context.Context) error {
 
 // RunOne claims and runs a single job. It reports whether a job was found.
 func (w *Worker) RunOne(ctx context.Context) (bool, error) {
+	n, err := w.Queue.RecoverExpired(ctx)
+	if err != nil {
+		return false, err
+	}
+	if n > 0 {
+		w.Log.Warn("recovered jobs with expired leases", "count", n)
+	}
 	j, err := w.Queue.Claim(ctx)
 	if errors.Is(err, ErrNoJob) {
 		return false, nil
@@ -69,6 +70,8 @@ func (w *Worker) RunOne(ctx context.Context) (bool, error) {
 	stageCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go w.watchCancel(stageCtx, cancel, j.RunID)
+	var leaseLost atomic.Bool
+	go w.heartbeat(stageCtx, cancel, j, &leaseLost, log)
 
 	start := time.Now()
 	persist, err := stage.Run(stageCtx, j, func(done, total int) {
@@ -77,12 +80,16 @@ func (w *Worker) RunOne(ctx context.Context) (bool, error) {
 		}
 	})
 	if ctx.Err() != nil {
-		// The worker itself is shutting down: leave the job running so RecoverInterrupted handles it.
+		// The worker itself is shutting down: leave the job running; its lease expires and another worker recovers it.
 		return true, ctx.Err()
+	}
+	if leaseLost.Load() {
+		log.Warn("job lease lost; stopped without recording a result")
+		return true, nil
 	}
 	if err == nil {
 		if err := w.Queue.Complete(ctx, j, persist); err != nil {
-			return true, err
+			return true, w.leaseErr(err, log)
 		}
 		log.Info("job state", "state", Completed, "duration_s", time.Since(start).Seconds())
 		return true, nil
@@ -92,7 +99,49 @@ func (w *Worker) RunOne(ctx context.Context) (bool, error) {
 		se = &StageError{Class: ErrCancelled, Message: "cancelled by user"}
 	}
 	log.Warn("job failed", "error_class", se.Class, "err", err, "duration_s", time.Since(start).Seconds())
-	return true, w.Queue.Fail(ctx, j, se, w.RetryDelay)
+	return true, w.leaseErr(w.Queue.Fail(ctx, j, se, w.RetryDelay), log)
+}
+
+// leaseErr turns ErrLeaseLost into a logged non-error: another worker owns the job now and its
+// result is the one that counts.
+func (w *Worker) leaseErr(err error, log *slog.Logger) error {
+	if errors.Is(err, ErrLeaseLost) {
+		log.Warn("job lease lost; result discarded")
+		return nil
+	}
+	return err
+}
+
+// heartbeat renews the lease every third of its length. If the lease is gone, or could not be
+// renewed for a whole lease length, it stops the stage: another worker may be running the job.
+func (w *Worker) heartbeat(ctx context.Context, cancel context.CancelFunc, j *Job, lost *atomic.Bool, log *slog.Logger) {
+	ttl := w.Queue.leaseTTL()
+	t := time.NewTicker(ttl / 3)
+	defer t.Stop()
+	lastOK := time.Now()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			hbCtx, stop := context.WithTimeout(ctx, ttl/3)
+			ok, err := w.Queue.Heartbeat(hbCtx, j)
+			stop()
+			switch {
+			case err == nil && ok:
+				lastOK = time.Now()
+				continue
+			case err != nil:
+				log.Warn("heartbeat failed", "err", err)
+				if time.Since(lastOK) < ttl {
+					continue
+				}
+			}
+			lost.Store(true)
+			cancel()
+			return
+		}
+	}
 }
 
 func classify(err error) *StageError {

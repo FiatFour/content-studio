@@ -36,15 +36,42 @@ type Job struct {
 	State       State
 	Attempt     int
 	AttemptBase int
+	LeaseOwner  string
 }
 
 type Queue struct {
 	DB          *pgxpool.Pool
 	Plan        Plan
 	MaxAttempts int
+	// Owner names this worker on the leases it takes. It must be unique per live worker process.
+	Owner string
+	// LeaseTTL is how long a claimed job stays this worker's without a heartbeat. Zero means DefaultLeaseTTL.
+	LeaseTTL time.Duration
+}
+
+// DefaultLeaseTTL is long enough that a busy but healthy worker never misses a heartbeat (they come
+// every third of it) and short enough that a dead worker's job is picked up within a minute.
+const DefaultLeaseTTL = 60 * time.Second
+
+func (q *Queue) leaseTTL() time.Duration {
+	if q.LeaseTTL > 0 {
+		return q.LeaseTTL
+	}
+	return DefaultLeaseTTL
+}
+
+func (q *Queue) owner() string {
+	if q.Owner != "" {
+		return q.Owner
+	}
+	return "worker"
 }
 
 var ErrNoJob = errors.New("no job ready")
+
+// ErrLeaseLost means the job is no longer this worker's: its lease expired and it was recovered
+// (and maybe claimed by another worker). The holder must stop and write nothing.
+var ErrLeaseLost = errors.New("job lease lost")
 
 // ConflictError means the request is valid but the run is in the wrong state for it. Its message
 // names only the state, so the API can show it as is.
@@ -101,9 +128,11 @@ func (q *Queue) Claim(ctx context.Context) (*Job, error) {
 		if err := Transition(j.State, Running); err != nil {
 			return err
 		}
-		j.State, j.Attempt = Running, j.Attempt+1
+		j.State, j.Attempt, j.LeaseOwner = Running, j.Attempt+1, q.owner()
 		if _, err := tx.Exec(ctx, `UPDATE jobs SET state = $1, attempt_count = $2, started_at = now(), updated_at = now(),
-			error_class = NULL, error_message = NULL, progress_done = 0 WHERE id = $3`, j.State, j.Attempt, j.ID); err != nil {
+			error_class = NULL, error_message = NULL, progress_done = 0,
+			lease_owner = $4, lease_expires_at = now() + $5::interval, heartbeat_at = now() WHERE id = $3`,
+			j.State, j.Attempt, j.ID, j.LeaseOwner, leaseInterval(q.leaseTTL())); err != nil {
 			return err
 		}
 		_, err = tx.Exec(ctx, `INSERT INTO job_attempts (job_id, n) VALUES ($1, $2)`, j.ID, j.Attempt)
@@ -115,11 +144,34 @@ func (q *Queue) Claim(ctx context.Context) (*Job, error) {
 	return &j, nil
 }
 
-// lockRunning re-reads the job under a row lock so a state change is checked against the real current state.
-func lockRunning(ctx context.Context, tx pgx.Tx, jobID int64) (State, error) {
+func leaseInterval(d time.Duration) string { return fmt.Sprintf("%d milliseconds", d.Milliseconds()) }
+
+// lockRunning re-reads the job under a row lock so a state change is checked against the real current
+// state. It also fences the caller: unless the job is still running under this very claim (same
+// attempt, same lease owner), the lease was lost and the caller gets ErrLeaseLost.
+func lockRunning(ctx context.Context, tx pgx.Tx, j *Job) (State, error) {
 	var s State
-	err := tx.QueryRow(ctx, `SELECT state FROM jobs WHERE id = $1 FOR UPDATE`, jobID).Scan(&s)
-	return s, err
+	var attempt int
+	var owner *string
+	err := tx.QueryRow(ctx, `SELECT state, attempt_count, lease_owner FROM jobs WHERE id = $1 FOR UPDATE`, j.ID).Scan(&s, &attempt, &owner)
+	if err != nil {
+		return s, err
+	}
+	if s != Running || attempt != j.Attempt || owner == nil || *owner != j.LeaseOwner {
+		return s, ErrLeaseLost
+	}
+	return s, nil
+}
+
+// Heartbeat renews the job's lease. It reports false when the lease is no longer this worker's.
+func (q *Queue) Heartbeat(ctx context.Context, j *Job) (bool, error) {
+	tag, err := q.DB.Exec(ctx, `UPDATE jobs SET lease_expires_at = now() + $4::interval, heartbeat_at = now()
+		WHERE id = $1 AND state = $2 AND attempt_count = $3 AND lease_owner = $5`,
+		j.ID, Running, j.Attempt, leaseInterval(q.leaseTTL()), j.LeaseOwner)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 func finishAttempt(ctx context.Context, tx pgx.Tx, j *Job, outcome State, class ErrorClass, msg string) error {
@@ -132,7 +184,7 @@ func finishAttempt(ctx context.Context, tx pgx.Tx, j *Job, outcome State, class 
 // then queues the next stage or marks the run ready for review after the last one.
 func (q *Queue) Complete(ctx context.Context, j *Job, persist func(pgx.Tx) error) error {
 	return pgx.BeginFunc(ctx, q.DB, func(tx pgx.Tx) error {
-		cur, err := lockRunning(ctx, tx, j.ID)
+		cur, err := lockRunning(ctx, tx, j)
 		if err != nil {
 			return err
 		}
@@ -144,7 +196,8 @@ func (q *Queue) Complete(ctx context.Context, j *Job, persist func(pgx.Tx) error
 				return err
 			}
 		}
-		if _, err := tx.Exec(ctx, `UPDATE jobs SET state = $1, finished_at = now(), updated_at = now(), progress_done = progress_total WHERE id = $2`, Completed, j.ID); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE jobs SET state = $1, finished_at = now(), updated_at = now(), progress_done = progress_total,
+			lease_owner = NULL, lease_expires_at = NULL WHERE id = $2`, Completed, j.ID); err != nil {
 			return err
 		}
 		if err := finishAttempt(ctx, tx, j, Completed, "", ""); err != nil {
@@ -164,7 +217,7 @@ func (q *Queue) Complete(ctx context.Context, j *Job, persist func(pgx.Tx) error
 func (q *Queue) Fail(ctx context.Context, j *Job, se *StageError, delay time.Duration) error {
 	remedy := se.Class.Remedy()
 	return pgx.BeginFunc(ctx, q.DB, func(tx pgx.Tx) error {
-		cur, err := lockRunning(ctx, tx, j.ID)
+		cur, err := lockRunning(ctx, tx, j)
 		if err != nil {
 			return err
 		}
@@ -178,6 +231,7 @@ func (q *Queue) Fail(ctx context.Context, j *Job, se *StageError, delay time.Dur
 			return err
 		}
 		if _, err := tx.Exec(ctx, `UPDATE jobs SET state = $1, error_class = $2, error_message = $3, updated_at = now(),
+			lease_owner = NULL, lease_expires_at = NULL,
 			run_after = CASE WHEN $1 = 'retry_scheduled' THEN now() + $4::interval END,
 			finished_at = CASE WHEN $1 = 'retry_scheduled' THEN NULL ELSE now() END WHERE id = $5`,
 			to, se.Class, se.Message, fmt.Sprintf("%d milliseconds", delay.Milliseconds()), j.ID); err != nil {
@@ -253,35 +307,69 @@ func (q *Queue) startRewrite(ctx context.Context, tx pgx.Tx, runID int64, feedba
 	return newID, insertJob(ctx, tx, newID, q.Plan.stages("rewrite")[0], 0)
 }
 
-// RecoverInterrupted runs at worker start. A job left running by a crashed worker is rerun from
-// scratch if it has attempts left, otherwise failed with the reason. Its stage work dir is
-// discarded by the stage itself on rerun.
-func (q *Queue) RecoverInterrupted(ctx context.Context) (int, error) {
-	rows, err := q.DB.Query(ctx, `SELECT j.id, j.run_id, r.kind, j.stage, j.seq, j.attempt_count, j.attempt_base FROM jobs j
-		JOIN workflow_runs r ON r.id = j.run_id WHERE j.state = $1`, Running)
-	if err != nil {
-		return 0, err
-	}
-	var stale []Job
-	for rows.Next() {
-		var j Job
-		if err := rows.Scan(&j.ID, &j.RunID, &j.RunKind, &j.Stage, &j.Seq, &j.Attempt, &j.AttemptBase); err != nil {
-			rows.Close()
-			return 0, err
+// RecoverExpired takes back every running job whose lease has expired, because its worker died or
+// stalled. Each goes back to queued with its attempt recorded, or to failed (and its run with it)
+// once the attempt limit is used up. A run whose cancel was requested is cancelled instead. The
+// stage's work dir is discarded by the stage itself on rerun. Any worker may call this; the row
+// locks make concurrent callers split the work. It returns how many jobs it recovered.
+func (q *Queue) RecoverExpired(ctx context.Context) (int, error) {
+	n := 0
+	for {
+		found, err := q.recoverOneExpired(ctx)
+		if err != nil {
+			return n, err
 		}
-		stale = append(stale, j)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return 0, err
-	}
-	for i := range stale {
-		se := &StageError{Class: ErrWorkerRestart, Message: "worker stopped while this stage was running"}
-		if err := q.Fail(ctx, &stale[i], se, 0); err != nil {
-			return i, err
+		if !found {
+			return n, nil
 		}
+		n++
 	}
-	return len(stale), nil
+}
+
+func (q *Queue) recoverOneExpired(ctx context.Context) (bool, error) {
+	found := false
+	err := pgx.BeginFunc(ctx, q.DB, func(tx pgx.Tx) error {
+		j := Job{State: Running}
+		var cancelRequested bool
+		err := tx.QueryRow(ctx, `SELECT j.id, j.run_id, j.attempt_count, j.attempt_base, r.cancel_requested FROM jobs j
+			JOIN workflow_runs r ON r.id = j.run_id
+			WHERE j.state = $1 AND j.lease_expires_at < now() ORDER BY j.id LIMIT 1 FOR UPDATE OF j SKIP LOCKED`, Running).
+			Scan(&j.ID, &j.RunID, &j.Attempt, &j.AttemptBase, &cancelRequested)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		found = true
+		class, msg := ErrWorkerRestart, "worker lost its lease while this stage was running"
+		to := Queued
+		switch {
+		case cancelRequested:
+			to, class, msg = Cancelled, ErrCancelled, "cancelled by user"
+		case j.Attempt-j.AttemptBase >= q.MaxAttempts:
+			to, msg = Failed, msg+"; attempt limit reached"
+		}
+		if err := Transition(j.State, to); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE jobs SET state = $1, error_class = $2, error_message = $3, updated_at = now(),
+			lease_owner = NULL, lease_expires_at = NULL,
+			finished_at = CASE WHEN $1 = 'queued' THEN NULL ELSE now() END WHERE id = $4`, to, class, msg, j.ID); err != nil {
+			return err
+		}
+		if err := finishAttempt(ctx, tx, &j, to, class, msg); err != nil {
+			return err
+		}
+		switch to {
+		case Failed:
+			_, err = tx.Exec(ctx, `UPDATE workflow_runs SET state = $1, finished_at = now() WHERE id = $2`, RunFailed, j.RunID)
+		case Cancelled:
+			_, err = tx.Exec(ctx, `UPDATE workflow_runs SET state = $1, finished_at = now() WHERE id = $2`, RunCancelled, j.RunID)
+		}
+		return err
+	})
+	return found, err
 }
 
 // RequestCancel marks a run for cancellation. Jobs not yet running are cancelled at once;

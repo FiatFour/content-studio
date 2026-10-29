@@ -21,7 +21,7 @@ var AllStates = []State{Queued, Running, WaitingForResource, WaitingForHuman, Re
 // legal is the transition table from docs/spec/jobs.md. Every job state change goes through Transition.
 var legal = map[State][]State{
 	Queued:             {Running, Cancelled},
-	Running:            {Completed, Failed, RetryScheduled, WaitingForResource, WaitingForHuman, Cancelled},
+	Running:            {Completed, Failed, RetryScheduled, Queued, WaitingForResource, WaitingForHuman, Cancelled},
 	WaitingForResource: {Queued, Cancelled},
 	WaitingForHuman:    {Queued, Completed, Cancelled},
 	RetryScheduled:     {Queued, Cancelled},
