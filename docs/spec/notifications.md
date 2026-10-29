@@ -48,3 +48,23 @@ Each event type can be toggled. The settings are stored in the backend and chang
 - 429 handling and idempotent retry (no duplicate posts for the same `event_id`).
 - Delivery failure doesn't fail or stall the episode job.
 - Message bodies for each event contain no secrets, file paths or raw stack traces.
+
+## Implementation status (backend, issue #15)
+Backend only; the Providers & budget screen UI is not built yet.
+
+- **Webhook URL** comes from the env var `STUDIO_DISCORD_WEBHOOK_URL` (there is no secret file in the codebase yet). It is validated at startup (https, host `discord.com` or `discordapp.com`, path `/api/webhooks/<id>/<token>`, no port, userinfo or query) as SSRF protection; redirects are never followed. It is never stored in the database. The API returns only `configured` and the last 4 characters (`suffix`). Errors from the HTTP client are reduced to a class (`timeout`, `network error`, `discord returned HTTP n`) because they otherwise embed the URL.
+- **API:** `GET /api/notifications` (configured, suffix, event toggles with `implemented`, last delivery, 20 recent deliveries), `PUT /api/notifications/events/:event` (`{"enabled": bool}`), `POST /api/notifications/test` (labelled test, returns the real HTTP result; 409 `not configured` when unset). There is no inbound endpoint of any kind.
+- **Delivery:** an outbox table (`notifications`, unique `event_id`) is drained by a loop in `cmd/worker` that is separate from the job queue. Up to 5 attempts, backoff 30 s doubling to 5 min, and on HTTP 429 it waits at least Discord's `retry_after` (capped at 5 min). Each attempt is recorded in `notification_deliveries` (event, ok, HTTP code, error class, time; never the URL). With no webhook configured, queued rows are marked `skipped`. Delivery is at-least-once: a crash between Discord accepting and the row being marked sent can repeat one message.
+- **Messages** are text only, one embed with episode number and title, version, state and a short reason; the reason keeps only its first line with URLs and file paths replaced, and mentions are disabled. No links yet: the studio URL setting does not exist.
+
+| Event | Status |
+|---|---|
+| Episode ready for review (QA passed) | **Wired** in the QA stage, queued in the same transaction that marks the video `qa_passed` |
+| Version approved / exported | **Wired** in the API decision and export handlers (default off) |
+| Job failed (retries exhausted) | Not implemented. Needs a hook in the queue's retries-exhausted path, plus the one-per-episode-per-10-minutes collapse |
+| Uncertain paid-API outcome | Not implemented (budget/provider work) |
+| Budget threshold crossed | Not implemented (budget work) |
+| Emergency stop on/off | Not implemented (kill switch does not exist yet) |
+| Daily summary | Not implemented (needs a scheduler) |
+
+Toggles for unimplemented events can be stored but nothing raises those events. The dispatcher runs inside the worker, so notifications stay queued while the worker is stopped.

@@ -18,6 +18,7 @@ import (
 	"github.com/fiat/content-studio/internal/artifacts"
 	"github.com/fiat/content-studio/internal/audit"
 	"github.com/fiat/content-studio/internal/jobs"
+	"github.com/fiat/content-studio/internal/notify"
 	"github.com/fiat/content-studio/internal/review"
 )
 
@@ -31,6 +32,7 @@ type Server struct {
 	StorageRoot string
 	WebDir      string
 	Log         *slog.Logger
+	Notify      *notify.Service // nil disables the /api/notifications routes
 }
 
 func (s *Server) Echo() *echo.Echo {
@@ -62,6 +64,12 @@ func (s *Server) Echo() *echo.Echo {
 	a.POST("/runs/:id/retry", s.retryRun)
 	a.POST("/videos/:id/decision", s.decide)
 	a.POST("/videos/:id/export", s.export)
+
+	if s.Notify != nil {
+		a.GET("/notifications", s.getNotifications)
+		a.PUT("/notifications/events/:event", s.putNotificationEvent)
+		a.POST("/notifications/test", s.testNotification)
+	}
 
 	if s.WebDir != "" {
 		e.GET("/*", s.spa)

@@ -3,6 +3,7 @@ package pipeline_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -134,6 +135,12 @@ func TestFullPipelineProducesAVideoThatPassesQA(t *testing.T) {
 	h.db.QueryRow(ctx, `SELECT validation_status FROM artifacts WHERE id = $1`, videos[0].ID).Scan(&status)
 	if status != "qa_passed" {
 		t.Fatalf("video status %s", status)
+	}
+	var ready int
+	h.db.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE event = 'episode_ready' AND event_id = $1 AND status = 'pending'`,
+		fmt.Sprintf("episode_ready:artifact:%d", videos[0].ID)).Scan(&ready)
+	if ready != 1 {
+		t.Fatalf("QA pass queued %d episode_ready notifications, want 1", ready)
 	}
 	var blockingFails int
 	h.db.QueryRow(ctx, `SELECT count(*) FROM qa_results WHERE artifact_id = $1 AND severity = 'blocking' AND NOT passed`, videos[0].ID).Scan(&blockingFails)
