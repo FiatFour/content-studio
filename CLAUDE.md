@@ -11,7 +11,7 @@ It is not lip-synced character animation. If a requested effect isn't supported,
 ## Current milestone
 **M2 — Reliability, security, cost.** See `docs/spec/milestones.md`. M1a is closed (report: `docs/m1a-report.md`). M0 findings: `docs/assessment.md`.
 M1b code is done (character records, episode summaries, script stage fed by canon, speaker check, per-character LoRA in the image stage). M1b remaining, owner-only: the smoke run and the acceptance (three consecutive episodes keep each main character recognizable).
-M2 scope is in `milestones.md`. Issues labelled `blocked:D9` (auth) or `blocked:D10` (first cloud provider) must not be started while those decisions are open in `docs/spec/decisions.md`.
+M2 scope is in `milestones.md`. D9 (auth) was decided on 2026-10-29: passkey (WebAuthn) with a session cookie, see `docs/spec/security-ops.md`. Issues labelled `blocked:D10` (first cloud provider) must not be started while that decision is open in `docs/spec/decisions.md`.
 Work only on the current milestone. The other spec files describe later work, so don't build ahead.
 
 ## Non-negotiables

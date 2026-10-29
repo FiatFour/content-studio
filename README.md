@@ -23,7 +23,8 @@ Voice runs before images so a script of the wrong spoken length fails early. A `
 
 | Command | What it does |
 |---|---|
-| `make dev` | Starts Postgres (container `studio-pg`), ComfyUI, the voice service, the server and the worker. UI at <http://127.0.0.1:8080>. Logs in `var/logs`. |
+| `make dev` | Starts Postgres (container `studio-pg`), ComfyUI, the voice service, the server and the worker. UI at <http://localhost:8080> (use `localhost`, not `127.0.0.1`: passkeys need a domain name). Logs in `var/logs`. |
+| `go run ./cmd/server enroll` | Prints a one-time code (valid 10 minutes) that registers your first passkey. See "Signing in" below. |
 | `make test` | `go test ./...` against a real Postgres, then the web tests. Uses fake providers; no GPU. |
 | `make fmt` / `make vet` | `gofmt -l` and `go vet`. |
 | `make build` | Builds `bin/` and the web bundle. |
@@ -40,9 +41,17 @@ Keep the laptop on AC power with sleep off while real jobs run. Windows has hard
 
 Settings come from `STUDIO_*` environment variables (see `internal/config/config.go`). Generated media, storage and exports live under `var/` and are not committed.
 
+## Signing in
+
+1. Start the server, then run `go run ./cmd/server enroll` in a terminal on this machine. It prints a code such as `ABCDE-FGHIJ-KLMNO-PQRST` to that terminal only (never to the log, the database or the web).
+2. Open <http://localhost:8080>, choose enrollment, enter the code within 10 minutes and create the passkey. This works once: while any passkey exists no code can add another one.
+3. Add more passkeys later from a signed-in session. Sessions expire after 12 h idle or 7 days in total (`STUDIO_SESSION_IDLE`, `STUDIO_SESSION_MAX`).
+
+`STUDIO_AUTH_RP_ID` (default `localhost`) and `STUDIO_AUTH_ORIGINS` (comma separated; default `localhost` and `127.0.0.1` on the server port and on 5173 for the Vite dev server) change the relying party and the allowed origins for remote access over https.
+
 ## Known limitations
 
-- **No authentication.** The server binds to 127.0.0.1 and nothing else protects approve and export. Any local process, or a web page open in your browser, can call the API. Add auth before using this off a solo local machine (`docs/spec/security-ops.md`, decision D9).
+- **Authentication is passkey-only and partly done (D9, #16).** Every API route except health and the sign-in routes needs a session, and state-changing requests need an allowed `Origin`. Not yet done (#17): HTTPS setup, CSRF tokens, general rate limits and request-size limits, security headers. There is one owner and no recovery flow: if you lose every passkey, see "Lost every passkey" in `docs/spec/security-ops.md`. `make smoke` needs `STUDIO_SESSION` (see `scripts/smoke.sh`).
 - Characters are not yet kept visually consistent between shots. M1b has the character records, episode summaries, script retrieval and speaker check; D8 chose per-character LoRA: the image stage applies a character's LoRA (U-Net only, at most 2 per shot, strength `STUDIO_LORA_STRENGTH`, default 0.8) and its trigger token when they are set on the character. Training is still a manual process, and the LoRA file must already be in ComfyUI's loras folder (the app does not check; a missing file fails the image stage, with no fallback to the plain model). Acceptance is the owner's judgement over three consecutive episodes.
 - Script length is often wrong on the first try, so a run may need one or two rewrite rounds.
 - Cloud providers, budgets, canon, notifications and the agent tower are not implemented.

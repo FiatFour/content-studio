@@ -65,7 +65,7 @@ In scope:
 - Projects/episodes API.
 - Persistent job and stage records.
 - Per-stage checkpoint (a completed stage is not redone on resume).
-- Localhost-only binding. (The single admin token was removed on 2026-10-28 by the owner.)
+- Localhost-only binding. (The single admin token was removed on 2026-10-28 by the owner; passkey authentication replaced it in M2, D9.)
 - Every UI string goes through a TH/EN translation layer from day one (Thai default, TH/EN toggle in the top bar). A test fails if a key exists in one language but not the other.
 
 Out of scope:

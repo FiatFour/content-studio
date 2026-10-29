@@ -29,6 +29,7 @@ start server bin/server
 start worker bin/worker
 
 echo
-echo "Studio:  http://127.0.0.1:8080"
+echo "Studio:  http://localhost:8080   (use localhost, not 127.0.0.1: passkeys need a domain name)"
+echo "First time: run  go run ./cmd/server enroll  in another terminal and enter the code in the browser."
 echo "Logs in var/logs. Keep the laptop plugged in with sleep off while jobs run."
 wait

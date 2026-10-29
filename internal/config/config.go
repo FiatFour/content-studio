@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fiat/content-studio/internal/notify"
@@ -18,6 +19,13 @@ type Config struct {
 	StorageRoot string
 	ExportDir   string
 	WebDir      string
+
+	// Passkey authentication (D9). AuthRPID is the WebAuthn relying-party ID (a domain, never an IP);
+	// AuthOrigins are the browser origins allowed to call the API and to run WebAuthn ceremonies.
+	AuthRPID      string
+	AuthOrigins   []string
+	SessionIdle   time.Duration
+	SessionMaxAge time.Duration
 
 	OllamaURL string
 	LLMModel  string
@@ -115,6 +123,9 @@ func Load() (Config, error) {
 	if c.LoraStrength, err = strconv.ParseFloat(env("STUDIO_LORA_STRENGTH", "0.8"), 64); err != nil || c.LoraStrength <= 0 || c.LoraStrength > 2 {
 		return c, fmt.Errorf("STUDIO_LORA_STRENGTH must be a number above 0 and at most 2")
 	}
+	if err := c.loadAuth(); err != nil {
+		return c, err
+	}
 	c.PollInterval = time.Second
 	c.StageTimeout = 45 * time.Minute
 	host, _, err := net.SplitHostPort(c.Addr)
@@ -130,6 +141,52 @@ func Load() (Config, error) {
 		}
 	}
 	return c, nil
+}
+
+// loadAuth reads STUDIO_AUTH_RP_ID, STUDIO_AUTH_ORIGINS (comma separated), STUDIO_SESSION_IDLE and
+// STUDIO_SESSION_MAX. Defaults serve `make dev`: the app on STUDIO_ADDR's port and the Vite dev server
+// on 5173, both reached as localhost (a WebAuthn RP ID cannot be an IP, so open http://localhost:PORT).
+// The 127.0.0.1 forms are allowed as origins for the CSRF check only; browsers will not run a
+// passkey ceremony for RP ID "localhost" from a 127.0.0.1 page.
+func (c *Config) loadAuth() error {
+	c.AuthRPID = env("STUDIO_AUTH_RP_ID", "localhost")
+	_, port, _ := net.SplitHostPort(c.Addr)
+	c.AuthOrigins = []string{"http://localhost:" + port, "http://127.0.0.1:" + port, "http://localhost:5173", "http://127.0.0.1:5173"}
+	if v := os.Getenv("STUDIO_AUTH_ORIGINS"); v != "" {
+		c.AuthOrigins = nil
+		for _, o := range strings.Split(v, ",") {
+			c.AuthOrigins = append(c.AuthOrigins, strings.TrimSpace(o))
+		}
+	}
+	for _, o := range c.AuthOrigins {
+		u, err := url.Parse(o)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.User != nil {
+			return fmt.Errorf("STUDIO_AUTH_ORIGINS: %q is not an origin like https://host[:port]", o)
+		}
+		if ip := net.ParseIP(u.Hostname()); u.Scheme == "http" && u.Hostname() != "localhost" && (ip == nil || !ip.IsLoopback()) {
+			return fmt.Errorf("STUDIO_AUTH_ORIGINS: %q: plain http is only allowed for localhost; use https", o)
+		}
+	}
+	var err error
+	if c.SessionIdle, err = envDuration("STUDIO_SESSION_IDLE", 12*time.Hour); err != nil {
+		return err
+	}
+	if c.SessionMaxAge, err = envDuration("STUDIO_SESSION_MAX", 7*24*time.Hour); err != nil {
+		return err
+	}
+	return nil
+}
+
+func envDuration(key string, def time.Duration) (time.Duration, error) {
+	v := os.Getenv(key)
+	if v == "" {
+		return def, nil
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d < time.Minute {
+		return 0, fmt.Errorf("%s must be a duration of at least 1m, like 12h", key)
+	}
+	return d, nil
 }
 
 // requireLocal enforces non-negotiable 1 for M1a: every AI provider runs on this machine.

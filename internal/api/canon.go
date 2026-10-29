@@ -192,7 +192,7 @@ func (s *Server) createCharacter(c echo.Context) error {
 			projectID, req.Slug, req.Name, req.Appearance, req.Personality, req.Voice, arrives, req.Status, since, req.LoraName, req.TriggerToken).Scan(&id); err != nil {
 			return err
 		}
-		return audit.Record(ctx, tx, audit.Entry{Actor: owner, Action: "canon.character.create", TargetType: "character", TargetID: id,
+		return audit.Record(ctx, tx, audit.Entry{Actor: actor(c), Action: "canon.character.create", TargetType: "character", TargetID: id,
 			Detail: map[string]any{"slug": req.Slug, "status": req.Status}})
 	})
 	if isUniqueViolation(err) {
@@ -234,7 +234,7 @@ func (s *Server) updateCharacter(c echo.Context) error {
 			id, req.Name, req.Appearance, req.Personality, req.Voice, arrives, req.Status, since, req.LoraName, req.TriggerToken); err != nil {
 			return err
 		}
-		return audit.Record(ctx, tx, audit.Entry{Actor: owner, Action: "canon.character.update", TargetType: "character", TargetID: id,
+		return audit.Record(ctx, tx, audit.Entry{Actor: actor(c), Action: "canon.character.update", TargetType: "character", TargetID: id,
 			Detail: map[string]any{"slug": slug, "status": req.Status}})
 	})
 	if err != nil {
@@ -318,7 +318,7 @@ func (s *Server) putSummary(c echo.Context) error {
 			open_threads = EXCLUDED.open_threads, updated_at = now()`, id, req.Summary, present, threads); err != nil {
 			return err
 		}
-		return audit.Record(ctx, tx, audit.Entry{Actor: owner, Action: "canon.summary.put", TargetType: "episode", TargetID: id,
+		return audit.Record(ctx, tx, audit.Entry{Actor: actor(c), Action: "canon.summary.put", TargetType: "episode", TargetID: id,
 			Detail: map[string]any{"summary_chars": utf8.RuneCountInString(req.Summary), "open_threads": len(threads)}})
 	})
 	if err != nil {
@@ -357,7 +357,7 @@ func (s *Server) putInStoryDate(c echo.Context) error {
 		if d != nil {
 			detail["in_story_date"] = d.Format(time.DateOnly)
 		}
-		return audit.Record(ctx, tx, audit.Entry{Actor: owner, Action: "canon.in_story_date.put", TargetType: "episode", TargetID: id, Detail: detail})
+		return audit.Record(ctx, tx, audit.Entry{Actor: actor(c), Action: "canon.in_story_date.put", TargetType: "episode", TargetID: id, Detail: detail})
 	})
 	if err != nil {
 		return err

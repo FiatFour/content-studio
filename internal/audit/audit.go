@@ -14,7 +14,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Owner is the only actor until authentication lands (D9).
+// Owner names the single owner for non-request contexts (the user_settings key). API handlers must not
+// use it as the audit actor: they record the authenticated identity from the session (internal/api/auth.go).
 const Owner = "owner"
 
 const maxString = 200

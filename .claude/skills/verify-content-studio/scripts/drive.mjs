@@ -18,7 +18,9 @@ const t = (lang, key, vars = {}) => dict[lang][key].replace(/\{(\w+)\}/g, (_, k)
 const evidence = `${root}/${env.DIR}/evidence/${flow}`;
 mkdirSync(evidence, { recursive: true });
 
-const api = (path, init = {}) => fetch(`${env.URL}/api${path}`, { ...init, headers: { "Content-Type": "application/json", ...init.headers } }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => null) }));
+// API calls carry the test session cookie and an allowed Origin (state-changing requests need one).
+const apiOrigin = `http://localhost:${env.PORT}`;
+const api = (path, init = {}) => fetch(`${env.URL}/api${path}`, { ...init, headers: { "Content-Type": "application/json", Origin: apiOrigin, Cookie: `studio_session=${env.SESSION}`, ...init.headers } }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => null) }));
 const log = [];
 const check = (name, ok, detail = "") => { log.push({ name, ok: !!ok, detail }); console.log(`${ok ? "PASS" : "FAIL"} ${name} ${detail}`); };
 const expectVisible = async (name, locator) => { try { await locator.first().waitFor({ state: "visible", timeout: 8000 }); check(name, true); } catch { check(name, false, "not visible within 8 s"); } };
@@ -67,7 +69,10 @@ const flows = {
 
 if (!flows[flow]) { console.error(`unknown flow ${flow}; choose ${Object.keys(flows).join(" | ")}`); process.exit(2); }
 const browser = await chromium.launch();
-const page = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
+const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+// The browser holds the test session cookie, as a logged-in owner's would be.
+if (env.SESSION) await context.addCookies([{ name: "studio_session", value: env.SESSION, url: env.URL, httpOnly: true, sameSite: "Strict" }]);
+const page = await context.newPage();
 const consoleErrors = [];
 page.on("pageerror", (e) => consoleErrors.push(String(e).slice(0, 200)));
 try { await flows[flow](page); } catch (e) { check("flow ran to the end", false, String(e).slice(0, 300)); }

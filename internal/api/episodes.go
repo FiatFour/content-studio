@@ -349,7 +349,7 @@ func (s *Server) decide(c echo.Context) error {
 	if err := bind(c, &req); err != nil {
 		return err
 	}
-	a, err := s.Review.Decide(c.Request().Context(), id, req.SHA256, review.Decision(req.Decision), strings.TrimSpace(req.Notes), owner)
+	a, err := s.Review.Decide(c.Request().Context(), id, req.SHA256, review.Decision(req.Decision), strings.TrimSpace(req.Notes), actor(c))
 	if err != nil {
 		return err
 	}
@@ -365,7 +365,7 @@ func (s *Server) export(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	e, err := s.Review.Export(c.Request().Context(), id, owner)
+	e, err := s.Review.Export(c.Request().Context(), id, actor(c))
 	if err != nil {
 		return err
 	}

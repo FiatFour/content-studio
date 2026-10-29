@@ -64,7 +64,7 @@ func (s *Server) putNotificationEvent(c echo.Context) error {
 	ev := notify.Event(c.Param("event"))
 	ctx := c.Request().Context()
 	err := s.Notify.SetEnabledTx(ctx, ev, *req.Enabled, func(tx pgx.Tx) error {
-		return audit.Record(ctx, tx, audit.Entry{Actor: owner, Action: "notification.toggle", TargetType: "notification_event",
+		return audit.Record(ctx, tx, audit.Entry{Actor: actor(c), Action: "notification.toggle", TargetType: "notification_event",
 			Detail: map[string]any{"event": string(ev), "enabled": *req.Enabled}})
 	})
 	if err != nil {

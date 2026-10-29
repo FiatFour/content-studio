@@ -58,6 +58,42 @@ func TestProvidersOffMachineAreRefused(t *testing.T) {
 	}
 }
 
+func TestAuthDefaultsServeLocalDevAndFollowThePort(t *testing.T) {
+	c, err := Load()
+	if err != nil || c.AuthRPID != "localhost" {
+		t.Fatalf("%v %q", err, c.AuthRPID)
+	}
+	want := map[string]bool{"http://localhost:8080": true, "http://127.0.0.1:8080": true, "http://localhost:5173": true, "http://127.0.0.1:5173": true}
+	for _, o := range c.AuthOrigins {
+		delete(want, o)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing default origins %v in %v", want, c.AuthOrigins)
+	}
+	t.Setenv("STUDIO_ADDR", "127.0.0.1:18090")
+	if c, err = Load(); err != nil || c.AuthOrigins[0] != "http://localhost:18090" {
+		t.Fatalf("%v %v", err, c.AuthOrigins)
+	}
+}
+
+func TestAuthOriginsAreValidated(t *testing.T) {
+	for _, bad := range []string{"studio.example", "http://studio.example", "https://studio.example/path", "ftp://x", "https://u:p@x"} {
+		t.Setenv("STUDIO_AUTH_ORIGINS", bad)
+		if _, err := Load(); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+	t.Setenv("STUDIO_AUTH_ORIGINS", "https://studio.example, http://localhost:3000")
+	c, err := Load()
+	if err != nil || len(c.AuthOrigins) != 2 || c.AuthOrigins[1] != "http://localhost:3000" {
+		t.Fatalf("%v %v", err, c.AuthOrigins)
+	}
+	t.Setenv("STUDIO_SESSION_IDLE", "5s")
+	if _, err := Load(); err == nil {
+		t.Fatal("session idle below one minute accepted")
+	}
+}
+
 func TestServerMustBindToLoopback(t *testing.T) {
 	t.Setenv("STUDIO_ADDR", "0.0.0.0:8080")
 	if _, err := Load(); err == nil {
