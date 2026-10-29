@@ -23,7 +23,7 @@ func expireLeases(t *testing.T, db *pgxpool.Pool) {
 
 func workerNamed(db *pgxpool.Pool, owner string, ttl time.Duration, maxAttempts int, stages map[string]jobs.Stage) *jobs.Worker {
 	w := newWorker(db, stages)
-	w.Queue = &jobs.Queue{DB: db, Plan: plan, MaxAttempts: maxAttempts, Owner: owner, LeaseTTL: ttl}
+	w.Queue = &jobs.Queue{DB: db, Plan: plan, MaxAttempts: maxAttempts, Owner: owner, LeaseTTL: ttl, Delay: noDelay}
 	return w
 }
 
@@ -126,7 +126,7 @@ func TestWorkerDiesMidJobAndAnotherTakesOver(t *testing.T) {
 	if err := dead.Queue.Complete(context.Background(), ghost, nil); !errors.Is(err, jobs.ErrLeaseLost) {
 		t.Fatalf("late Complete: %v", err)
 	}
-	if err := dead.Queue.Fail(context.Background(), ghost, jobs.Errorf(jobs.ErrInvalidInput, nil, "late"), 0); !errors.Is(err, jobs.ErrLeaseLost) {
+	if err := dead.Queue.Fail(context.Background(), ghost, jobs.Errorf(jobs.ErrInvalidInput, nil, "late")); !errors.Is(err, jobs.ErrLeaseLost) {
 		t.Fatalf("late Fail: %v", err)
 	}
 	if got := runState(t, db, runID); got != jobs.RunReadyForReview {

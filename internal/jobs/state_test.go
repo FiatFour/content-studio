@@ -25,10 +25,15 @@ func TestTransitionEveryPair(t *testing.T) {
 func TestEveryErrorClassHasTheIntendedRemedy(t *testing.T) {
 	want := map[ErrorClass]Remedy{
 		ErrTransientNetwork: RetryStage, ErrValidationFailed: RetryStage,
-		ErrInsufficientLocal: RetryStage, ErrWorkerRestart: RetryStage,
+		ErrRateLimited: RetryStage, ErrProviderOutage: RetryStage,
+		ErrInsufficientLocal: WaitResource, ErrWorkerRestart: RetryStage,
 		ErrScriptDuration: RewriteScript, ErrCancelled: CancelRun,
-		ErrInvalidInput: FailRun, ErrUnsupported: FailRun, ErrInternal: FailRun,
-		ErrQAFailed: FailRun, ErrorClass("a_class_nobody_classified"): FailRun,
+		ErrInvalidInput: FailRun, ErrAuthOrPermission: FailRun, ErrUnsupported: FailRun, ErrInternal: FailRun,
+		ErrUncertainOutcome: FailRun,
+		ErrQAFailed:         FailRun, ErrorClass("a_class_nobody_classified"): FailRun,
+	}
+	if got := len(AllErrorClasses()); got != len(want)-1 {
+		t.Errorf("table has %d classes, test expects %d", got, len(want)-1)
 	}
 	for c, r := range want {
 		if got := c.Remedy(); got != r {

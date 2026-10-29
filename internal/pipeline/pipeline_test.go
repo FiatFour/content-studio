@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -66,7 +67,8 @@ func newHarness(t *testing.T, llmResponses ...string) *harness {
 	db := storetest.New(t)
 	_, ep := storetest.Episode(t, db)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	q := &jobs.Queue{DB: db, Plan: pipeline.FictionalSeries, MaxAttempts: 2}
+	// Retries are due at once so the test does not wait out the real backoff.
+	q := &jobs.Queue{DB: db, Plan: pipeline.FictionalSeries, MaxAttempts: 2, Delay: func(*jobs.StageError, int) time.Duration { return 0 }}
 	llm := &fake.LLM{Responses: llmResponses}
 	deps := &pipeline.Deps{
 		DB: db, Store: &artifacts.Store{Root: t.TempDir()}, Queue: q,

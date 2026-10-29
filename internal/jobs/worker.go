@@ -21,7 +21,6 @@ type Worker struct {
 	Stages       map[string]Stage
 	Log          *slog.Logger
 	PollInterval time.Duration
-	RetryDelay   time.Duration
 }
 
 // Run processes jobs one at a time until ctx ends. One worker means one GPU-heavy stage at a time.
@@ -64,7 +63,7 @@ func (w *Worker) RunOne(ctx context.Context) (bool, error) {
 	log.Info("job state", "state", Running)
 	stage, ok := w.Stages[j.Stage]
 	if !ok {
-		return true, w.Queue.Fail(ctx, j, Errorf(ErrUnsupported, nil, "no implementation for stage %s", j.Stage), 0)
+		return true, w.Queue.Fail(ctx, j, Errorf(ErrUnsupported, nil, "no implementation for stage %s", j.Stage))
 	}
 
 	stageCtx, cancel := context.WithCancel(ctx)
@@ -99,7 +98,7 @@ func (w *Worker) RunOne(ctx context.Context) (bool, error) {
 		se = &StageError{Class: ErrCancelled, Message: "cancelled by user"}
 	}
 	log.Warn("job failed", "error_class", se.Class, "err", err, "duration_s", time.Since(start).Seconds())
-	return true, w.leaseErr(w.Queue.Fail(ctx, j, se, w.RetryDelay), log)
+	return true, w.leaseErr(w.Queue.Fail(ctx, j, se), log)
 }
 
 // leaseErr turns ErrLeaseLost into a logged non-error: another worker owns the job now and its

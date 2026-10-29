@@ -1,7 +1,11 @@
 // Package jobs owns job and run state, the Postgres queue, and the worker loop.
 package jobs
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+	"time"
+)
 
 type State string
 
@@ -53,6 +57,10 @@ type ErrorClass string
 
 const (
 	ErrInvalidInput      ErrorClass = "invalid_input"
+	ErrAuthOrPermission  ErrorClass = "auth_or_permission"
+	ErrRateLimited       ErrorClass = "rate_limited"
+	ErrProviderOutage    ErrorClass = "provider_outage"
+	ErrUncertainOutcome  ErrorClass = "uncertain_outcome"
 	ErrTransientNetwork  ErrorClass = "transient_network"
 	ErrValidationFailed  ErrorClass = "validation_failed"
 	ErrUnsupported       ErrorClass = "unsupported"
@@ -68,29 +76,58 @@ const (
 type Remedy int
 
 const (
-	FailRun Remedy = iota // fail the job and its run; a person decides (the default)
-	RetryStage
-	RewriteScript // fail the run, then start one new run with the message as scriptwriter feedback
+	FailRun       Remedy = iota // fail the job and its run; a person decides (the default)
+	RetryStage                  // retry_scheduled with bounded backoff, until the attempt bound
+	WaitResource                // waiting_for_resource with the same backoff and bound
+	RewriteScript               // fail the run, then start one new run with the message as scriptwriter feedback
 	CancelRun
 )
 
+// remedies is the error-class table of docs/spec/jobs.md. Classes that do not retry are listed
+// anyway, so the table reads as the whole policy and a test can insist every class is decided.
 var remedies = map[ErrorClass]Remedy{
+	ErrInvalidInput:      FailRun,
+	ErrAuthOrPermission:  FailRun,
+	ErrRateLimited:       RetryStage,
 	ErrTransientNetwork:  RetryStage,
+	ErrProviderOutage:    RetryStage,
+	ErrInsufficientLocal: WaitResource,
 	ErrValidationFailed:  RetryStage,
-	ErrInsufficientLocal: RetryStage,
-	ErrWorkerRestart:     RetryStage,
+	ErrUnsupported:       FailRun,
 	ErrScriptDuration:    RewriteScript,
+	ErrUncertainOutcome:  FailRun, // never retried automatically: the request may have been accepted and billed
+	ErrWorkerRestart:     RetryStage,
+	ErrInternal:          FailRun,
+	ErrQAFailed:          FailRun,
 	ErrCancelled:         CancelRun,
+}
+
+// AllErrorClasses lists every class in the table.
+func AllErrorClasses() []ErrorClass {
+	out := make([]ErrorClass, 0, len(remedies))
+	for c := range remedies {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, k int) bool { return out[i] < out[k] })
+	return out
 }
 
 // Remedy returns FailRun for any class not in the table, so a new class is safe until it is classified.
 func (c ErrorClass) Remedy() Remedy { return remedies[c] }
+
+// Retries reports whether the class is retried automatically (by retry_scheduled or waiting_for_resource).
+func (c ErrorClass) Retries() bool {
+	r := c.Remedy()
+	return r == RetryStage || r == WaitResource
+}
 
 // StageError is what a stage returns to say how it failed. Message must already be safe to show.
 type StageError struct {
 	Class   ErrorClass
 	Message string
 	Err     error
+	// RetryAfter is the provider's retry-after hint for rate_limited. Zero means none.
+	RetryAfter time.Duration
 }
 
 func (e *StageError) Error() string {
