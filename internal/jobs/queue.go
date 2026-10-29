@@ -15,7 +15,12 @@ type Plan struct {
 	Profile  string
 	Full     []string
 	Rerender []string
+	// Resources maps a stage to the limited resource it holds while running (for example "gpu").
+	// A stage not listed needs none. Limits live in the resource_limits table.
+	Resources map[string]string
 }
+
+func (p Plan) resource(stage string) string { return p.Resources[stage] }
 
 func (p Plan) stages(kind string) []string {
 	if kind == "rerender" {
@@ -97,51 +102,117 @@ func (q *Queue) CreateRun(ctx context.Context, episodeID int64, kind string, par
 			VALUES ($1, $2, $3, $4, $5) RETURNING id`, episodeID, q.Plan.Profile, kind, parentRunID, RunRunning).Scan(&runID); err != nil {
 			return err
 		}
-		return insertJob(ctx, tx, runID, stages[0], 0)
+		return insertJob(ctx, tx, runID, stages[0], 0, q.Plan.resource(stages[0]))
 	})
 	return runID, err
 }
 
-func insertJob(ctx context.Context, tx pgx.Tx, runID int64, stage string, seq int) error {
-	_, err := tx.Exec(ctx, `INSERT INTO jobs (run_id, stage, seq, state) VALUES ($1, $2, $3, $4)`, runID, stage, seq, Queued)
+func insertJob(ctx context.Context, tx pgx.Tx, runID int64, stage string, seq int, resource string) error {
+	_, err := tx.Exec(ctx, `INSERT INTO jobs (run_id, stage, seq, state, resource) VALUES ($1, $2, $3, $4, NULLIF($5, ''))`, runID, stage, seq, Queued, resource)
 	return err
 }
 
-// Claim promotes due retries, then takes the oldest queued job with FOR UPDATE SKIP LOCKED
-// and moves it to running.
+// claimScanLimit bounds how many queued jobs one Claim looks at (and row-locks) while skipping
+// jobs that are blocked on a resource.
+const claimScanLimit = 20
+
+// Claim promotes due retries, wakes waiting jobs whose resource has a free slot, then takes the
+// oldest queued job it can run and moves it to running. A queued job whose resource has no free
+// slot is moved to waiting_for_resource (with its reason) and the next job is tried, so one busy
+// resource never blocks jobs that need none. The slot count and the claim are decided under a
+// per-resource advisory lock, so two workers can never both take the last slot.
 func (q *Queue) Claim(ctx context.Context) (*Job, error) {
 	var j Job
+	claimed := false
 	err := pgx.BeginFunc(ctx, q.DB, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `UPDATE jobs SET state = $1, updated_at = now() WHERE state = $2 AND run_after <= now()`, Queued, RetryScheduled); err != nil {
 			return err
 		}
-		err := tx.QueryRow(ctx, `SELECT j.id, j.run_id, r.episode_id, e.project_id, r.kind, r.parent_run_id, j.stage, j.seq, j.state, j.attempt_count, j.attempt_base
-			FROM jobs j JOIN workflow_runs r ON r.id = j.run_id JOIN episodes e ON e.id = r.episode_id
-			WHERE j.state = $1 ORDER BY j.id LIMIT 1 FOR UPDATE OF j SKIP LOCKED`, Queued).
-			Scan(&j.ID, &j.RunID, &j.EpisodeID, &j.ProjectID, &j.RunKind, &j.ParentRunID, &j.Stage, &j.Seq, &j.State, &j.Attempt, &j.AttemptBase)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrNoJob
+		if err := Transition(WaitingForResource, Queued); err != nil {
+			return err
 		}
+		if _, err := tx.Exec(ctx, `UPDATE jobs j SET state = $1, wait_reason = NULL, updated_at = now() WHERE j.state = $2
+			AND (SELECT count(*) FROM jobs r WHERE r.state = $3 AND r.resource = j.resource)
+				< COALESCE((SELECT max_concurrent FROM resource_limits WHERE resource = j.resource), 1)`,
+			Queued, WaitingForResource, Running); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, `SELECT j.id, j.run_id, r.episode_id, e.project_id, r.kind, r.parent_run_id, j.stage, j.seq, j.state, j.attempt_count, j.attempt_base, coalesce(j.resource, '')
+			FROM jobs j JOIN workflow_runs r ON r.id = j.run_id JOIN episodes e ON e.id = r.episode_id
+			WHERE j.state = $1 ORDER BY j.id LIMIT $2 FOR UPDATE OF j SKIP LOCKED`, Queued, claimScanLimit)
 		if err != nil {
 			return err
 		}
-		if err := Transition(j.State, Running); err != nil {
+		type candidate struct {
+			Job
+			resource string
+		}
+		var cands []candidate
+		for rows.Next() {
+			var c candidate
+			if err := rows.Scan(&c.ID, &c.RunID, &c.EpisodeID, &c.ProjectID, &c.RunKind, &c.ParentRunID, &c.Stage, &c.Seq, &c.State, &c.Attempt, &c.AttemptBase, &c.resource); err != nil {
+				rows.Close()
+				return err
+			}
+			cands = append(cands, c)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
 			return err
 		}
-		j.State, j.Attempt, j.LeaseOwner = Running, j.Attempt+1, q.owner()
-		if _, err := tx.Exec(ctx, `UPDATE jobs SET state = $1, attempt_count = $2, started_at = now(), updated_at = now(),
-			error_class = NULL, error_message = NULL, progress_done = 0,
-			lease_owner = $4, lease_expires_at = now() + $5::interval, heartbeat_at = now() WHERE id = $3`,
-			j.State, j.Attempt, j.ID, j.LeaseOwner, leaseInterval(q.leaseTTL())); err != nil {
+		for _, c := range cands {
+			if c.resource != "" {
+				free, used, limit, err := resourceFree(ctx, tx, c.resource)
+				if err != nil {
+					return err
+				}
+				if !free {
+					if err := Transition(c.State, WaitingForResource); err != nil {
+						return err
+					}
+					reason := fmt.Sprintf("waiting for resource %q: %d of %d slots in use", c.resource, used, limit)
+					if _, err := tx.Exec(ctx, `UPDATE jobs SET state = $1, wait_reason = $2, updated_at = now() WHERE id = $3`, WaitingForResource, reason, c.ID); err != nil {
+						return err
+					}
+					continue
+				}
+			}
+			j = c.Job
+			if err := Transition(j.State, Running); err != nil {
+				return err
+			}
+			j.State, j.Attempt, j.LeaseOwner = Running, j.Attempt+1, q.owner()
+			if _, err := tx.Exec(ctx, `UPDATE jobs SET state = $1, attempt_count = $2, started_at = now(), updated_at = now(),
+				error_class = NULL, error_message = NULL, wait_reason = NULL, progress_done = 0,
+				lease_owner = $4, lease_expires_at = now() + $5::interval, heartbeat_at = now() WHERE id = $3`,
+				j.State, j.Attempt, j.ID, j.LeaseOwner, leaseInterval(q.leaseTTL())); err != nil {
+				return err
+			}
+			claimed = true
+			_, err = tx.Exec(ctx, `INSERT INTO job_attempts (job_id, n) VALUES ($1, $2)`, j.ID, j.Attempt)
 			return err
 		}
-		_, err = tx.Exec(ctx, `INSERT INTO job_attempts (job_id, n) VALUES ($1, $2)`, j.ID, j.Attempt)
-		return err
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+	if !claimed {
+		return nil, ErrNoJob
+	}
 	return &j, nil
+}
+
+// resourceFree reports whether the resource has a free slot, taking its advisory lock first so the
+// count stays true until the caller's transaction ends. A resource with no resource_limits row
+// gets one slot, the safe default.
+func resourceFree(ctx context.Context, tx pgx.Tx, resource string) (free bool, used, limit int, err error) {
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('resource:' || $1::text, 0))`, resource); err != nil {
+		return false, 0, 0, err
+	}
+	err = tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM jobs WHERE state = $2 AND resource = $1),
+		COALESCE((SELECT max_concurrent FROM resource_limits WHERE resource = $1), 1)`, resource, Running).Scan(&used, &limit)
+	return used < limit, used, limit, err
 }
 
 func leaseInterval(d time.Duration) string { return fmt.Sprintf("%d milliseconds", d.Milliseconds()) }
@@ -205,7 +276,7 @@ func (q *Queue) Complete(ctx context.Context, j *Job, persist func(pgx.Tx) error
 		}
 		stages := q.Plan.stages(j.RunKind)
 		if j.Seq+1 < len(stages) {
-			return insertJob(ctx, tx, j.RunID, stages[j.Seq+1], j.Seq+1)
+			return insertJob(ctx, tx, j.RunID, stages[j.Seq+1], j.Seq+1, q.Plan.resource(stages[j.Seq+1]))
 		}
 		_, err = tx.Exec(ctx, `UPDATE workflow_runs SET state = $1, finished_at = now() WHERE id = $2`, RunReadyForReview, j.RunID)
 		return err
@@ -304,7 +375,8 @@ func (q *Queue) startRewrite(ctx context.Context, tx pgx.Tx, runID int64, feedba
 		runID, RunRunning, feedback).Scan(&newID); err != nil {
 		return 0, err
 	}
-	return newID, insertJob(ctx, tx, newID, q.Plan.stages("rewrite")[0], 0)
+	first := q.Plan.stages("rewrite")[0]
+	return newID, insertJob(ctx, tx, newID, first, 0, q.Plan.resource(first))
 }
 
 // RecoverExpired takes back every running job whose lease has expired, because its worker died or

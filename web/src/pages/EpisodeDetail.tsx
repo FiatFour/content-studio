@@ -80,6 +80,7 @@ export function EpisodeDetail({ id }: { id: number }) {
           <div className="font-semibold">{t(`stage.${s}` as Key)}</div><div className="muted text-xs">{t(`agent.${s}` as Key)}</div>
           <div className="mt-2">{j ? <StateBadge state={j.state} /> : <span className="muted mono text-sm">{t("state.pending")}</span>}</div>
           {j && j.state === "running" && (j.progress_total > 0 ? <div className="mt-2"><Bar done={j.progress_done} total={j.progress_total} /><div className="mono mt-1 text-xs">{t("episode.progress", { done: j.progress_done, total: j.progress_total })}</div></div> : <p className="muted mt-2 text-xs">{t("episode.noProgress")}</p>)}
+          {j && j.state === "waiting_for_resource" && j.wait_reason && <p className="muted mt-2 text-xs"><strong>{t("episode.waitingWhy")}:</strong> {j.wait_reason}</p>}
           {j && <div className="muted mono mt-2 text-xs">{t("episode.attempt", { n: j.attempt })}{j.model ? ` · ${j.model}` : ""}</div>}</li>; })}</ol>
       {failed && <p role="alert" className="mt-3 text-red"><strong>{t("episode.failedWhy")}:</strong> <span className="mono">{failed.error_class}</span> {failed.error_message}</p>}
       <div className="mt-3 flex flex-wrap gap-2">
