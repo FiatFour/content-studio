@@ -16,11 +16,12 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/fiat/content-studio/internal/artifacts"
+	"github.com/fiat/content-studio/internal/audit"
 	"github.com/fiat/content-studio/internal/jobs"
 	"github.com/fiat/content-studio/internal/review"
 )
 
-const owner = "owner"
+const owner = audit.Owner
 
 type Server struct {
 	DB          *pgxpool.Pool
@@ -48,6 +49,7 @@ func (s *Server) Echo() *echo.Echo {
 	a.GET("/artifacts/:id/content", s.artifactContent)
 	a.GET("/videos/:id/review", s.videoReview)
 	a.GET("/characters", s.listCharacters)
+	a.GET("/audit", s.listAudit)
 
 	a.PUT("/settings", s.putSettings)
 	a.POST("/episodes", s.createEpisode)
@@ -158,8 +160,14 @@ func (s *Server) putSettings(c echo.Context) error {
 	if req.UILang != "th" && req.UILang != "en" {
 		return fail(http.StatusBadRequest, "ui_lang must be th or en")
 	}
-	_, err := s.DB.Exec(c.Request().Context(), `INSERT INTO user_settings (user_id, ui_lang) VALUES ($1, $2)
-		ON CONFLICT (user_id) DO UPDATE SET ui_lang = EXCLUDED.ui_lang`, owner, req.UILang)
+	ctx := c.Request().Context()
+	err := pgx.BeginFunc(ctx, s.DB, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `INSERT INTO user_settings (user_id, ui_lang) VALUES ($1, $2)
+			ON CONFLICT (user_id) DO UPDATE SET ui_lang = EXCLUDED.ui_lang`, owner, req.UILang); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Entry{Actor: owner, Action: "settings.update", TargetType: "settings", Detail: map[string]any{"ui_lang": req.UILang}})
+	})
 	if err != nil {
 		return err
 	}
@@ -171,7 +179,11 @@ func (s *Server) cancelRun(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := s.Queue.RequestCancel(c.Request().Context(), id); err != nil {
+	ctx := c.Request().Context()
+	if err := s.Queue.RequestCancel(ctx, id); err != nil {
+		return err
+	}
+	if err := s.auditAfterQueue(ctx, audit.Entry{Actor: owner, Action: "job.cancel", TargetType: "run", TargetID: id}); err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, map[string]bool{"ok": true})
@@ -182,11 +194,23 @@ func (s *Server) retryRun(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	runID, err := s.Queue.Resume(c.Request().Context(), id)
+	ctx := c.Request().Context()
+	runID, err := s.Queue.Resume(ctx, id)
 	if err != nil {
 		return err
 	}
+	if err := s.auditAfterQueue(ctx, audit.Entry{Actor: owner, Action: "job.retry", TargetType: "run", TargetID: id, Detail: map[string]any{"resumed_run_id": runID}}); err != nil {
+		return err
+	}
 	return c.JSON(http.StatusOK, map[string]any{"ok": true, "run_id": runID})
+}
+
+// auditAfterQueue records a queue action in its own transaction right after the queue committed it.
+// Queue.RequestCancel and Queue.Resume own their transactions, so the audit row cannot join them
+// yet (the queue is being reworked; limitation recorded in docs/spec/security-ops.md). A crash
+// between the two commits loses the row, and a failure here is returned so it is never silent.
+func (s *Server) auditAfterQueue(ctx context.Context, e audit.Entry) error {
+	return pgx.BeginFunc(ctx, s.DB, func(tx pgx.Tx) error { return audit.Record(ctx, tx, e) })
 }
 
 // rerender starts a render+QA run from the latest full or rewrite run whose subtitles stage completed.
@@ -259,4 +283,28 @@ func (s *Server) spa(c echo.Context) error {
 		return c.File(full)
 	}
 	return c.File(filepath.Join(s.WebDir, "index.html"))
+}
+
+// listAudit is read-only, newest first. before is the id of the last row of the previous page.
+func (s *Server) listAudit(c echo.Context) error {
+	limit, before := 50, int64(0)
+	if v := c.QueryParam("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 200 {
+			return fail(http.StatusBadRequest, "limit must be 1 to 200")
+		}
+		limit = n
+	}
+	if v := c.QueryParam("before"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 1 {
+			return fail(http.StatusBadRequest, "before must be a row id")
+		}
+		before = n
+	}
+	rows, err := audit.List(c.Request().Context(), s.DB, before, limit)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, map[string]any{"entries": rows})
 }

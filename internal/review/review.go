@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/fiat/content-studio/internal/artifacts"
+	"github.com/fiat/content-studio/internal/audit"
 )
 
 type Decision string
@@ -83,8 +84,12 @@ func (s *Service) Decide(ctx context.Context, artifactID int64, seenSHA256 strin
 			return refuse("the stored file no longer matches this version's sha256")
 		}
 		a = Approval{ArtifactID: artifactID, SHA256: sha, Decision: d, Notes: notes, Reviewer: reviewer}
-		return tx.QueryRow(ctx, `INSERT INTO approvals (artifact_id, sha256, decision, notes, reviewer) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-			artifactID, sha, d, notes, reviewer).Scan(&a.ID)
+		if err := tx.QueryRow(ctx, `INSERT INTO approvals (artifact_id, sha256, decision, notes, reviewer) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+			artifactID, sha, d, notes, reviewer).Scan(&a.ID); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Entry{Actor: reviewer, Action: "review." + string(d), TargetType: "artifact", TargetID: artifactID,
+			Detail: map[string]any{"approval_id": a.ID, "sha256": sha, "notes": notes}})
 	})
 	return a, err
 }
@@ -108,7 +113,7 @@ type Export struct {
 
 // Export copies the approved bytes of one version and verifies the copy. It never renders or
 // substitutes another version, and refuses if anything does not match the approved hash.
-func (s *Service) Export(ctx context.Context, artifactID int64) (Export, error) {
+func (s *Service) Export(ctx context.Context, artifactID int64, actor string) (Export, error) {
 	ap, err := s.Latest(ctx, artifactID)
 	if err != nil {
 		return Export{}, err
@@ -149,8 +154,17 @@ func (s *Service) Export(ctx context.Context, artifactID int64) (Export, error) 
 		return Export{}, refuse("exported copy does not match the approved sha256; removed it")
 	}
 	e := Export{Path: dst, SHA256: got}
-	err = s.DB.QueryRow(ctx, `INSERT INTO exports (approval_id, artifact_id, export_path, sha256) VALUES ($1, $2, $3, $4) RETURNING id`,
-		ap.ID, artifactID, dst, got).Scan(&e.ID)
+	err = pgx.BeginFunc(ctx, s.DB, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `INSERT INTO exports (approval_id, artifact_id, export_path, sha256) VALUES ($1, $2, $3, $4) RETURNING id`,
+			ap.ID, artifactID, dst, got).Scan(&e.ID); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Entry{Actor: actor, Action: "export.create", TargetType: "artifact", TargetID: artifactID,
+			Detail: map[string]any{"export_id": e.ID, "approval_id": ap.ID, "sha256": got, "file_name": name}})
+	})
+	if err != nil {
+		os.Remove(dst) // no export row (or audit row) exists, so the file must not either
+	}
 	return e, err
 }
 

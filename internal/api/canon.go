@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/labstack/echo/v4"
 
+	"github.com/fiat/content-studio/internal/audit"
 	"github.com/fiat/content-studio/internal/canon"
 	"github.com/fiat/content-studio/internal/pipeline"
 )
@@ -186,9 +187,13 @@ func (s *Server) createCharacter(c echo.Context) error {
 		if err != nil {
 			return err
 		}
-		return tx.QueryRow(ctx, `INSERT INTO characters (project_id, slug, name, appearance, personality, voice, arrives_on, status, status_since, lora_name, trigger_token)
+		if err := tx.QueryRow(ctx, `INSERT INTO characters (project_id, slug, name, appearance, personality, voice, arrives_on, status, status_since, lora_name, trigger_token)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
-			projectID, req.Slug, req.Name, req.Appearance, req.Personality, req.Voice, arrives, req.Status, since, req.LoraName, req.TriggerToken).Scan(&id)
+			projectID, req.Slug, req.Name, req.Appearance, req.Personality, req.Voice, arrives, req.Status, since, req.LoraName, req.TriggerToken).Scan(&id); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Entry{Actor: owner, Action: "canon.character.create", TargetType: "character", TargetID: id,
+			Detail: map[string]any{"slug": req.Slug, "status": req.Status}})
 	})
 	if isUniqueViolation(err) {
 		return fail(http.StatusConflict, "a character with this id already exists")
@@ -223,9 +228,16 @@ func (s *Server) updateCharacter(c echo.Context) error {
 	if req.Slug != "" && req.Slug != slug {
 		return fail(http.StatusBadRequest, "the id of a character cannot be changed")
 	}
-	if _, err := s.DB.Exec(ctx, `UPDATE characters SET name=$2, appearance=$3, personality=$4, voice=$5, arrives_on=$6, status=$7,
-		status_since=$8, lora_name=$9, trigger_token=$10 WHERE id=$1`,
-		id, req.Name, req.Appearance, req.Personality, req.Voice, arrives, req.Status, since, req.LoraName, req.TriggerToken); err != nil {
+	err = pgx.BeginFunc(ctx, s.DB, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `UPDATE characters SET name=$2, appearance=$3, personality=$4, voice=$5, arrives_on=$6, status=$7,
+			status_since=$8, lora_name=$9, trigger_token=$10 WHERE id=$1`,
+			id, req.Name, req.Appearance, req.Personality, req.Voice, arrives, req.Status, since, req.LoraName, req.TriggerToken); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Entry{Actor: owner, Action: "canon.character.update", TargetType: "character", TargetID: id,
+			Detail: map[string]any{"slug": slug, "status": req.Status}})
+	})
+	if err != nil {
 		return err
 	}
 	s.Log.Info("character updated", "character_id", id, "slug", slug)
@@ -301,10 +313,13 @@ func (s *Server) putSummary(c echo.Context) error {
 		if known != len(present) {
 			return fail(http.StatusBadRequest, "characters_present contains an id that is not a character of this series")
 		}
-		_, err := tx.Exec(ctx, `INSERT INTO episode_summaries (episode_id, summary, characters_present, open_threads) VALUES ($1,$2,$3,$4)
+		if _, err := tx.Exec(ctx, `INSERT INTO episode_summaries (episode_id, summary, characters_present, open_threads) VALUES ($1,$2,$3,$4)
 			ON CONFLICT (episode_id) DO UPDATE SET summary = EXCLUDED.summary, characters_present = EXCLUDED.characters_present,
-			open_threads = EXCLUDED.open_threads, updated_at = now()`, id, req.Summary, present, threads)
-		return err
+			open_threads = EXCLUDED.open_threads, updated_at = now()`, id, req.Summary, present, threads); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Entry{Actor: owner, Action: "canon.summary.put", TargetType: "episode", TargetID: id,
+			Detail: map[string]any{"summary_chars": utf8.RuneCountInString(req.Summary), "open_threads": len(threads)}})
 	})
 	if err != nil {
 		return err
@@ -329,12 +344,23 @@ func (s *Server) putInStoryDate(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	tag, err := s.DB.Exec(c.Request().Context(), `UPDATE episodes SET in_story_date = $2 WHERE id = $1`, id, d)
+	ctx := c.Request().Context()
+	err = pgx.BeginFunc(ctx, s.DB, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `UPDATE episodes SET in_story_date = $2 WHERE id = $1`, id, d)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return pgx.ErrNoRows
+		}
+		detail := map[string]any{}
+		if d != nil {
+			detail["in_story_date"] = d.Format(time.DateOnly)
+		}
+		return audit.Record(ctx, tx, audit.Entry{Actor: owner, Action: "canon.in_story_date.put", TargetType: "episode", TargetID: id, Detail: detail})
+	})
 	if err != nil {
 		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return pgx.ErrNoRows
 	}
 	return c.JSON(http.StatusOK, map[string]bool{"ok": true})
 }
