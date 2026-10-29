@@ -1,7 +1,7 @@
 # content-studio
 
 A local-first studio that turns an episode idea into a human-approved vertical video (1080×1920 MP4).
-Current milestone: **M1a**, the thinnest real vertical slice. Rules for contributors and agents are in `CLAUDE.md`; milestone scope is in `docs/spec/milestones.md`.
+Current milestone: **M1b**, characters and a minimal story bible (M1a is closed, see `docs/m1a-report.md`). Rules for contributors and agents are in `CLAUDE.md`; milestone scope is in `docs/spec/milestones.md`.
 
 The v1 output is a **motion comic**: generated stills with pan/zoom, local Thai voice, and burned-in subtitles. It is not lip-synced animation.
 
@@ -43,7 +43,7 @@ Settings come from `STUDIO_*` environment variables (see `internal/config/config
 ## Known limitations
 
 - **No authentication.** The server binds to 127.0.0.1 and nothing else protects approve and export. Any local process, or a web page open in your browser, can call the API. Add auth before using this off a solo local machine (`docs/spec/security-ops.md`, decision D9).
-- Characters are not kept visually consistent between shots (M1b).
+- Characters are not yet kept visually consistent between shots. M1b has the character records, episode summaries, script retrieval and speaker check; D8 chose per-character LoRA, but training and use in the image stage are not implemented (the LoRA name and trigger are stored, not used). Acceptance is the owner's judgement over three consecutive episodes.
 - Script length is often wrong on the first try, so a run may need one or two rewrite rounds.
 - Cloud providers, budgets, canon, notifications and the agent tower are not implemented.
 
