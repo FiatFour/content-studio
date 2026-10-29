@@ -57,3 +57,5 @@ Append-only table for approvals, rejections, exports, canon commits, budget and 
 - Document the link between DB rows and artifact files; a restore needs both from compatible points in time.
 - **A backup counts only after a tested restore**: restore into a fresh database and storage dir, start the app, open an approved episode, and verify its hash.
 - Keep backups out of the app's write path so a bug can't delete them.
+
+Status: implemented in `scripts/backup/` (`make backup`, `make restore-test`); how it works, the DB-to-file link and the recorded test results are in `docs/backup-restore.md`. The schedule is a cron line the owner installs; the sync target is a configurable directory (`STUDIO_BACKUP_ROOT`), not a remote.
