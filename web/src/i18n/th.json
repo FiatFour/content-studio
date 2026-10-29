@@ -171,7 +171,7 @@
   "characters.form.statusSinceHint": "ต้องกรอกเมื่อตัวละครไม่ได้มีชีวิตอยู่ในเรื่องแล้ว",
   "characters.form.lora": "ชื่อ LoRA (ไม่บังคับ)",
   "characters.form.trigger": "คำเรียก LoRA (trigger token ไม่บังคับ)",
-  "characters.form.loraHelp": "ข้อความธรรมดา ใส่ชื่อไฟล์ LoRA ที่เทรนแล้วและคำที่ใช้เรียก หน้านี้ยังไม่รองรับการเทรนหรือภาพอ้างอิง",
+  "characters.form.loraHelp": "ข้อความธรรมดา ใส่ชื่อไฟล์ LoRA ที่เทรนแล้วและคำที่ใช้เรียก ขั้นสร้างภาพจะใช้ LoRA นี้เมื่อกรอกไว้ (ไฟล์ต้องอยู่ในโฟลเดอร์ loras ของ ComfyUI แล้ว) แต่หน้านี้ยังไม่รองรับการเทรนหรือภาพอ้างอิง",
   "characters.form.refImages": "ภาพอ้างอิง: ยังไม่ได้พัฒนา",
   "characters.form.create": "เพิ่มตัวละคร",
   "characters.form.save": "บันทึกการแก้ไข",

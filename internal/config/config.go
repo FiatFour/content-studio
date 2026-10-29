@@ -25,6 +25,7 @@ type Config struct {
 	ImageCheckpoint string
 	ImageSteps      int
 	ImageCFG        float64
+	LoraStrength    float64
 	ImageSampler    string
 	ImageScheduler  string
 	ImageWidth      int
@@ -86,6 +87,9 @@ func Load() (Config, error) {
 	}
 	if c.ImageCFG, err = strconv.ParseFloat(env("STUDIO_IMAGE_CFG", "2.0"), 64); err != nil {
 		return c, fmt.Errorf("STUDIO_IMAGE_CFG: %w", err)
+	}
+	if c.LoraStrength, err = strconv.ParseFloat(env("STUDIO_LORA_STRENGTH", "0.8"), 64); err != nil || c.LoraStrength <= 0 || c.LoraStrength > 2 {
+		return c, fmt.Errorf("STUDIO_LORA_STRENGTH must be a number above 0 and at most 2")
 	}
 	c.PollInterval = time.Second
 	c.StageTimeout = 45 * time.Minute

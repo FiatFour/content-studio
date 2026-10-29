@@ -34,12 +34,17 @@ func (l *LLM) GenerateJSON(context.Context, string, json.RawMessage, int) ([]byt
 
 func (l *LLM) ReleaseGPU(context.Context) error { return nil }
 
-type Images struct{ Calls int }
+// Images makes flat-color PNGs and records every request. It accepts any LoRA list.
+type Images struct {
+	Calls    int
+	Requests []providers.ImageRequest
+}
 
 func (f *Images) Info() providers.Info { return providers.Info{Provider: "fake", Model: "fake-image"} }
 
 func (f *Images) Generate(_ context.Context, req providers.ImageRequest) ([]byte, error) {
 	f.Calls++
+	f.Requests = append(f.Requests, req)
 	img := image.NewRGBA(image.Rect(0, 0, req.Width, req.Height))
 	c := color.RGBA{uint8(req.Seed * 40), 120, 200, 255}
 	for y := 0; y < req.Height; y++ {

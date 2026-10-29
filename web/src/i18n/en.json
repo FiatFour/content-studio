@@ -171,7 +171,7 @@
   "characters.form.statusSinceHint": "Required when the character is not alive.",
   "characters.form.lora": "LoRA name (optional)",
   "characters.form.trigger": "Trigger token (optional)",
-  "characters.form.loraHelp": "Plain text. Name of the trained LoRA file and the word that triggers it. Training and reference images are not part of this screen.",
+  "characters.form.loraHelp": "Plain text. Name of the trained LoRA file and the word that triggers it. The image stage uses this LoRA when it is set (the file must already be in ComfyUI's loras folder). Training and reference images are not part of this screen.",
   "characters.form.refImages": "Reference images: Not implemented",
   "characters.form.create": "Add character",
   "characters.form.save": "Save changes",
