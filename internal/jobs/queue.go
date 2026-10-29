@@ -517,6 +517,12 @@ func (q *Queue) recoverOneExpired(ctx context.Context) (bool, error) {
 // RequestCancel marks a run for cancellation. Jobs not yet running are cancelled at once;
 // a running job sees the flag through CancelRequested and stops itself.
 func (q *Queue) RequestCancel(ctx context.Context, runID int64) error {
+	return q.RequestCancelTx(ctx, runID, nil)
+}
+
+// RequestCancelTx is RequestCancel with a hook that runs in the same transaction after the queue
+// change (the API uses it to write the audit row). If the hook fails, the cancel rolls back too.
+func (q *Queue) RequestCancelTx(ctx context.Context, runID int64, hook func(pgx.Tx) error) error {
 	return pgx.BeginFunc(ctx, q.DB, func(tx pgx.Tx) error {
 		var state RunState
 		if err := tx.QueryRow(ctx, `SELECT state FROM workflow_runs WHERE id = $1 FOR UPDATE`, runID).Scan(&state); err != nil {
@@ -538,9 +544,14 @@ func (q *Queue) RequestCancel(ctx context.Context, runID int64) error {
 			return err
 		}
 		if tag.RowsAffected() > 0 && running == 0 {
-			_, err = tx.Exec(ctx, `UPDATE workflow_runs SET state = $1, finished_at = now() WHERE id = $2`, RunCancelled, runID)
+			if _, err = tx.Exec(ctx, `UPDATE workflow_runs SET state = $1, finished_at = now() WHERE id = $2`, RunCancelled, runID); err != nil {
+				return err
+			}
 		}
-		return err
+		if hook != nil {
+			return hook(tx)
+		}
+		return nil
 	})
 }
 
@@ -566,6 +577,12 @@ func (q *Queue) SetProvider(ctx context.Context, jobID int64, provider, model st
 // running the voice stage again on the same script would fail the same way (the returned id is the
 // new run). A person chose this, so it is not limited by MaxAutoRewrites.
 func (q *Queue) Resume(ctx context.Context, runID int64) (int64, error) {
+	return q.ResumeTx(ctx, runID, nil)
+}
+
+// ResumeTx is Resume with a hook that runs in the same transaction after the queue change, given
+// the id of the run that continues the work. If the hook fails, the retry rolls back too.
+func (q *Queue) ResumeTx(ctx context.Context, runID int64, hook func(tx pgx.Tx, resumedRunID int64) error) (int64, error) {
 	resumed := runID
 	err := pgx.BeginFunc(ctx, q.DB, func(tx pgx.Tx) error {
 		var state RunState
@@ -591,7 +608,10 @@ func (q *Queue) Resume(ctx context.Context, runID int64) (int64, error) {
 			}
 			var err error
 			resumed, err = q.startRewrite(ctx, tx, runID, *msg)
-			return err
+			if err != nil {
+				return err
+			}
+			return runResumeHook(tx, hook, resumed)
 		}
 		if err := Transition(cur, Queued); err != nil {
 			return err
@@ -599,8 +619,17 @@ func (q *Queue) Resume(ctx context.Context, runID int64) (int64, error) {
 		if _, err := tx.Exec(ctx, `UPDATE jobs SET state = $1, attempt_base = attempt_count, run_after = NULL, finished_at = NULL, updated_at = now() WHERE id = $2`, Queued, jobID); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `UPDATE workflow_runs SET state = $1, finished_at = NULL, cancel_requested = false WHERE id = $2`, RunRunning, runID)
-		return err
+		if _, err := tx.Exec(ctx, `UPDATE workflow_runs SET state = $1, finished_at = NULL, cancel_requested = false WHERE id = $2`, RunRunning, runID); err != nil {
+			return err
+		}
+		return runResumeHook(tx, hook, resumed)
 	})
 	return resumed, err
+}
+
+func runResumeHook(tx pgx.Tx, hook func(pgx.Tx, int64) error, resumed int64) error {
+	if hook == nil {
+		return nil
+	}
+	return hook(tx, resumed)
 }

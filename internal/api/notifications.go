@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
 
+	"github.com/fiat/content-studio/internal/audit"
 	"github.com/fiat/content-studio/internal/notify"
 )
 
@@ -60,7 +62,12 @@ func (s *Server) putNotificationEvent(c echo.Context) error {
 		return fail(http.StatusBadRequest, "enabled is required")
 	}
 	ev := notify.Event(c.Param("event"))
-	if err := s.Notify.SetEnabled(c.Request().Context(), ev, *req.Enabled); err != nil {
+	ctx := c.Request().Context()
+	err := s.Notify.SetEnabledTx(ctx, ev, *req.Enabled, func(tx pgx.Tx) error {
+		return audit.Record(ctx, tx, audit.Entry{Actor: owner, Action: "notification.toggle", TargetType: "notification_event",
+			Detail: map[string]any{"event": string(ev), "enabled": *req.Enabled}})
+	})
+	if err != nil {
 		if errors.Is(err, notify.ErrUnknownEvent) {
 			return fail(http.StatusNotFound, "unknown notification event")
 		}
