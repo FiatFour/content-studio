@@ -13,6 +13,7 @@ import (
 
 	"github.com/fiat/content-studio/internal/artifacts"
 	"github.com/fiat/content-studio/internal/jobs"
+	"github.com/fiat/content-studio/internal/store/storetest"
 )
 
 // beforeStage runs a hook, then the real stage. It lets a test damage the rendered
@@ -32,6 +33,7 @@ func (b beforeStage) Run(ctx context.Context, j *jobs.Job, progress func(int, in
 func runWithDamage(t *testing.T, damage func(h *harness, runID int64)) (*harness, int64, artifacts.Artifact) {
 	t.Helper()
 	h := newHarness(t, fakeScript(t))
+	storetest.AllowArtifactTampering(t, h.db) // the damage hooks rewrite artifact rows on purpose
 	ctx := context.Background()
 	runID, err := h.worker.Queue.CreateRun(ctx, h.ep, "full", nil)
 	if err != nil {
