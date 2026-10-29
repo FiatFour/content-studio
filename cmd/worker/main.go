@@ -14,6 +14,7 @@ import (
 	"github.com/fiat/content-studio/internal/config"
 	"github.com/fiat/content-studio/internal/jobs"
 	"github.com/fiat/content-studio/internal/media"
+	"github.com/fiat/content-studio/internal/notify"
 	"github.com/fiat/content-studio/internal/pipeline"
 	"github.com/fiat/content-studio/internal/providers"
 	"github.com/fiat/content-studio/internal/store"
@@ -58,6 +59,17 @@ func run(log *slog.Logger) error {
 			FPS: cfg.FPS, SubtitleFont: cfg.SubtitleFont, ScriptRetries: cfg.ScriptRetries, LoraStrength: cfg.LoraStrength},
 		Log: log,
 	}
+	// Notifications are delivered by their own loop with their own retries; a Discord outage
+	// never touches the job worker below.
+	ns := &notify.Service{DB: db, Log: log}
+	if cfg.DiscordWebhookURL != "" {
+		d, err := notify.NewDiscord(cfg.DiscordWebhookURL, nil)
+		if err != nil {
+			return err
+		}
+		ns.Notifier, ns.Suffix = d, d.Suffix()
+	}
+	go ns.Run(ctx)
 	w := &jobs.Worker{Queue: q, Stages: deps.Stages(), Log: log, PollInterval: cfg.PollInterval, RetryDelay: 10 * time.Second}
 	log.Info("worker started", "llm", cfg.LLMModel, "checkpoint", cfg.ImageCheckpoint)
 	return w.Run(ctx)

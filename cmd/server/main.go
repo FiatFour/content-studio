@@ -15,6 +15,7 @@ import (
 	"github.com/fiat/content-studio/internal/artifacts"
 	"github.com/fiat/content-studio/internal/config"
 	"github.com/fiat/content-studio/internal/jobs"
+	"github.com/fiat/content-studio/internal/notify"
 	"github.com/fiat/content-studio/internal/pipeline"
 	"github.com/fiat/content-studio/internal/review"
 	"github.com/fiat/content-studio/internal/store"
@@ -50,6 +51,14 @@ func run(log *slog.Logger) error {
 	srv := &api.Server{
 		DB: db, Queue: &jobs.Queue{DB: db, Plan: pipeline.FictionalSeries, MaxAttempts: cfg.MaxAttempts}, Store: st,
 		Review: &review.Service{DB: db, Store: st, ExportDir: cfg.ExportDir}, WebDir: cfg.WebDir, Log: log,
+	}
+	srv.Notify = &notify.Service{DB: db, Log: log}
+	if cfg.DiscordWebhookURL != "" {
+		d, err := notify.NewDiscord(cfg.DiscordWebhookURL, nil)
+		if err != nil {
+			return err
+		}
+		srv.Notify.Notifier, srv.Notify.Suffix = d, d.Suffix()
 	}
 	if _, err := os.Stat(cfg.WebDir); err != nil {
 		srv.WebDir = ""

@@ -16,6 +16,7 @@ import (
 	"github.com/fiat/content-studio/internal/artifacts"
 	"github.com/fiat/content-studio/internal/jobs"
 	"github.com/fiat/content-studio/internal/media"
+	"github.com/fiat/content-studio/internal/notify"
 	"github.com/fiat/content-studio/internal/providers"
 )
 
@@ -89,8 +90,13 @@ func (s *qaStage) Run(ctx context.Context, j *jobs.Job, progress func(int, int))
 				return err
 			}
 		}
-		_, err := tx.Exec(ctx, `UPDATE artifacts SET validation_status = $1 WHERE id = $2`, status, video.ID)
-		return err
+		if _, err := tx.Exec(ctx, `UPDATE artifacts SET validation_status = $1 WHERE id = $2`, status, video.ID); err != nil {
+			return err
+		}
+		if status == "qa_passed" {
+			d.notifyReady(ctx, tx, e.ID, video)
+		}
+		return nil
 	})
 	if len(failed) == 0 {
 		return record, nil
@@ -274,4 +280,24 @@ func orNone(s string) string {
 func readSmall(path string) (string, error) {
 	b, err := os.ReadFile(path)
 	return string(b), err
+}
+
+// notifyReady queues the "episode ready for review" message in the same transaction that marks
+// the video qa_passed. It runs in a savepoint and only logs on failure: a notification problem
+// must never fail or stall the stage (notifications.md rule 4).
+func (d *Deps) notifyReady(ctx context.Context, tx pgx.Tx, episodeID int64, video artifacts.Artifact) {
+	sp, err := tx.Begin(ctx)
+	if err != nil {
+		d.Log.Warn("notification not queued", "err", err)
+		return
+	}
+	eventID := fmt.Sprintf("episode_ready:artifact:%d", video.ID)
+	if err := notify.Enqueue(ctx, sp, notify.EpisodeReady, eventID, episodeID, video.Version, "QA passed, waiting for your review", ""); err != nil {
+		d.Log.Warn("notification not queued", "err", err)
+		_ = sp.Rollback(ctx)
+		return
+	}
+	if err := sp.Commit(ctx); err != nil {
+		d.Log.Warn("notification not queued", "err", err)
+	}
 }

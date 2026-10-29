@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -352,6 +353,9 @@ func (s *Server) decide(c echo.Context) error {
 		return err
 	}
 	s.Log.Info("review decision", "artifact_id", id, "decision", a.Decision, "sha256", a.SHA256, "reviewer", a.Reviewer)
+	if a.Decision == review.Approved {
+		s.notifyVersion(c, id, "approved", fmt.Sprintf("version_approved:approval:%d", a.ID))
+	}
 	return c.JSON(http.StatusCreated, map[string]any{"id": a.ID, "decision": a.Decision, "sha256": a.SHA256})
 }
 
@@ -365,6 +369,7 @@ func (s *Server) export(c echo.Context) error {
 		return err
 	}
 	s.Log.Info("export", "artifact_id", id, "sha256", e.SHA256, "export_id", e.ID)
+	s.notifyVersion(c, id, "exported", fmt.Sprintf("version_exported:export:%d", e.ID))
 	return c.JSON(http.StatusCreated, map[string]any{"id": e.ID, "file_name": baseName(e.Path), "sha256": e.SHA256})
 }
 

@@ -8,6 +8,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/fiat/content-studio/internal/notify"
 )
 
 type Config struct {
@@ -32,6 +34,9 @@ type Config struct {
 	ImageHeight     int
 
 	ThaiVoiceURL string
+
+	// DiscordWebhookURL is a secret (notifications.md). Env only; never log or return it.
+	DiscordWebhookURL string
 
 	FFmpeg       string
 	FFprobe      string
@@ -65,6 +70,12 @@ func Load() (Config, error) {
 		FFmpeg:       env("FFMPEG_BIN", "/usr/bin/ffmpeg"),
 		FFprobe:      env("FFPROBE_BIN", "/usr/bin/ffprobe"),
 		SubtitleFont: env("STUDIO_SUBTITLE_FONT", "Noto Sans Thai"),
+	}
+	c.DiscordWebhookURL = os.Getenv("STUDIO_DISCORD_WEBHOOK_URL")
+	if c.DiscordWebhookURL != "" {
+		if err := notify.ValidateWebhookURL(c.DiscordWebhookURL); err != nil {
+			return c, fmt.Errorf("STUDIO_DISCORD_WEBHOOK_URL: %w", err) // the value is deliberately not echoed
+		}
 	}
 	var err error
 	ints := []struct {
