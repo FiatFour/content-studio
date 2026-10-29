@@ -66,7 +66,7 @@ func (u *unavailableLLM) GenerateJSON(context.Context, string, json.RawMessage, 
 func TestFailureLocalModelUnavailable(t *testing.T) {
 	h := newHarness(t, fakeScript(t))
 	llm := &unavailableLLM{}
-	h.deps.LLM = llm
+	h.setLLM(llm)
 	ctx := context.Background()
 	runID, err := h.worker.Queue.CreateRun(ctx, h.ep, "full", nil)
 	if err != nil {
@@ -135,7 +135,7 @@ func (b *badImages) Generate(context.Context, providers.ImageRequest) ([]byte, e
 
 func TestFailureInvalidImageOutputIsRejected(t *testing.T) {
 	h := newHarness(t, fakeScript(t))
-	h.deps.Images = &badImages{data: []byte("<html>502 bad gateway</html>")}
+	h.setImages(&badImages{data: []byte("<html>502 bad gateway</html>")})
 	runID, _ := h.worker.Queue.CreateRun(context.Background(), h.ep, "full", nil)
 	h.drain(t)
 	state, reason := h.runState(t, runID)
@@ -265,7 +265,7 @@ func (v *truncatedVoice) Clone(ctx context.Context, ref []byte, text string, see
 
 func TestFailureCorruptWAVFromVoiceIsRejected(t *testing.T) {
 	h := newHarness(t, fakeScript(t))
-	h.deps.Voice = &truncatedVoice{Voice: fake.Voice{SecondsPerRune: 0.09}}
+	h.setVoice(&truncatedVoice{Voice: fake.Voice{SecondsPerRune: 0.09}})
 	runID, _ := h.worker.Queue.CreateRun(context.Background(), h.ep, "full", nil)
 	h.drain(t)
 	state, reason := h.runState(t, runID)
@@ -287,7 +287,7 @@ func (v *truncatedImages) Generate(ctx context.Context, r providers.ImageRequest
 
 func TestFailureCorruptPNGFromImageModelIsRejected(t *testing.T) {
 	h := newHarness(t, fakeScript(t))
-	h.deps.Images = &truncatedImages{}
+	h.setImages(&truncatedImages{})
 	runID, _ := h.worker.Queue.CreateRun(context.Background(), h.ep, "full", nil)
 	h.drain(t)
 	state, reason := h.runState(t, runID)

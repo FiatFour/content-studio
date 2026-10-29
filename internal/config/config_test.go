@@ -26,6 +26,23 @@ func TestDefaultsAreLocalOnly(t *testing.T) {
 	}
 }
 
+func TestCloudIsOffByDefaultAndStrictlyParsed(t *testing.T) {
+	c, err := Load()
+	if err != nil || c.CloudEnabled {
+		t.Fatalf("default: enabled=%v err=%v", c.CloudEnabled, err)
+	}
+	t.Setenv("STUDIO_CLOUD_ENABLED", "true")
+	if c, err = Load(); err != nil || !c.CloudEnabled {
+		t.Fatalf("true: enabled=%v err=%v", c.CloudEnabled, err)
+	}
+	for _, v := range []string{"TRUE", "1", "yes", " true", "on"} {
+		t.Setenv("STUDIO_CLOUD_ENABLED", v)
+		if _, err := Load(); err == nil {
+			t.Errorf("%q accepted", v)
+		}
+	}
+}
+
 func TestProvidersOffMachineAreRefused(t *testing.T) {
 	for _, key := range []string{"OLLAMA_URL", "COMFYUI_URL", "THAIVOICE_URL"} {
 		for _, url := range []string{"https://api.example.com", "http://192.168.1.20:8188", "http://10.0.0.5:11434"} {

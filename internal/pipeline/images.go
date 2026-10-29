@@ -75,10 +75,14 @@ func (s *imagesStage) Run(ctx context.Context, j *jobs.Job, progress func(int, i
 	if err != nil {
 		return nil, err
 	}
-	if err := d.GPU.Acquire(ctx, gpuHolder(d.Images)); err != nil {
+	images, err := resolve[providers.ImageGen](d, providers.TaskImages)
+	if err != nil {
 		return nil, err
 	}
-	info := d.Images.Info()
+	if err := d.GPU.Acquire(ctx, gpuHolder(images)); err != nil {
+		return nil, err
+	}
+	info := images.Info()
 	if err := d.Queue.SetProvider(ctx, j.ID, info.Provider, info.Model); err != nil {
 		return nil, err
 	}
@@ -94,7 +98,7 @@ func (s *imagesStage) Run(ctx context.Context, j *jobs.Job, progress func(int, i
 		loras, tokens := shotLoras(script, sh, strength)
 		prompt := imagePrompt(script, sh, tokens)
 		seed := j.EpisodeID*1000 + int64(i)
-		data, err := d.Images.Generate(ctx, providers.ImageRequest{Prompt: prompt, Negative: negativePrompt, Seed: seed, Width: w, Height: h, Loras: loras})
+		data, err := images.Generate(ctx, providers.ImageRequest{Prompt: prompt, Negative: negativePrompt, Seed: seed, Width: w, Height: h, Loras: loras})
 		if err != nil {
 			return nil, err
 		}

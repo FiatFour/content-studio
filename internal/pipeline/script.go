@@ -19,6 +19,7 @@ import (
 	"github.com/fiat/content-studio/internal/artifacts"
 	"github.com/fiat/content-studio/internal/canon"
 	"github.com/fiat/content-studio/internal/jobs"
+	"github.com/fiat/content-studio/internal/providers"
 )
 
 //go:embed script.schema.json
@@ -293,10 +294,14 @@ func (s *scriptStage) Run(ctx context.Context, j *jobs.Job, progress func(int, i
 	if err != nil {
 		return nil, err
 	}
-	if err := d.GPU.Acquire(ctx, gpuHolder(d.LLM)); err != nil {
+	llm, err := resolve[providers.LLM](d, providers.TaskScript)
+	if err != nil {
 		return nil, err
 	}
-	info := d.LLM.Info()
+	if err := d.GPU.Acquire(ctx, gpuHolder(llm)); err != nil {
+		return nil, err
+	}
+	info := llm.Info()
 	if err := d.Queue.SetProvider(ctx, j.ID, info.Provider, info.Model); err != nil {
 		return nil, err
 	}
@@ -322,7 +327,7 @@ func (s *scriptStage) Run(ctx context.Context, j *jobs.Job, progress func(int, i
 	var lastErr error
 	for i := 0; i < tries; i++ {
 		progress(i, tries)
-		raw, err := d.LLM.GenerateJSON(ctx, prompt, scriptSchemaJSON, int(j.EpisodeID)*100+j.Attempt*10+i)
+		raw, err := llm.GenerateJSON(ctx, prompt, scriptSchemaJSON, int(j.EpisodeID)*100+j.Attempt*10+i)
 		if err != nil {
 			return nil, err
 		}

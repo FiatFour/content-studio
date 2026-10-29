@@ -40,17 +40,26 @@ type Settings struct {
 }
 
 type Deps struct {
-	DB        *pgxpool.Pool
-	Store     *artifacts.Store
-	Queue     *jobs.Queue
-	LLM       providers.LLM
-	Images    providers.ImageGen
-	Voice     providers.Voice
-	Segmenter providers.Segmenter
+	DB    *pgxpool.Pool
+	Store *artifacts.Store
+	Queue *jobs.Queue
+	// Providers is the only way a stage reaches a model; see resolve.
+	Providers *providers.Registry
 	GPU       *providers.GPU
 	Tools     media.Tools
 	Settings  Settings
 	Log       *slog.Logger
+}
+
+// resolve gets a stage's provider through providers.Resolve under providers.DefaultPolicy (LOCAL_ONLY).
+// No setting changes a task's policy yet, and script output is never consulted for one.
+// A refusal is permanent (retrying cannot change policy), so it fails the run.
+func resolve[T any](d *Deps, task providers.Task) (T, error) {
+	p, err := providers.Resolve[T](d.Providers, task, providers.DefaultPolicy)
+	if err != nil {
+		return p, jobs.Errorf(jobs.ErrAuthOrPermission, err, "provider refused: %s", err.Error())
+	}
+	return p, nil
 }
 
 // Stages wires every stage of the profile to its implementation.

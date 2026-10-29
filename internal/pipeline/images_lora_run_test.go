@@ -22,7 +22,7 @@ func TestImageStageUsesCanonLoraAndRecordsIt(t *testing.T) {
 	}
 	// tan has no LoRA: it must be unaffected.
 	imgs := &fake.Images{}
-	h.deps.Images = imgs
+	h.setImages(imgs)
 	h.deps.Settings.LoraStrength = 0.7
 	runID, err := h.worker.Queue.CreateRun(ctx, h.ep, "full", nil)
 	if err != nil {
@@ -66,7 +66,7 @@ func TestImageStageUsesCanonLoraAndRecordsIt(t *testing.T) {
 func TestImageStageWithoutLoraSendsNoLoras(t *testing.T) {
 	h := newHarness(t, fakeScript(t))
 	imgs := &fake.Images{}
-	h.deps.Images = imgs
+	h.setImages(imgs)
 	ctx := context.Background()
 	runID, err := h.worker.Queue.CreateRun(ctx, h.ep, "full", nil)
 	if err != nil {

@@ -10,6 +10,7 @@ import (
 	"github.com/fiat/content-studio/internal/artifacts"
 	"github.com/fiat/content-studio/internal/canon"
 	"github.com/fiat/content-studio/internal/jobs"
+	"github.com/fiat/content-studio/internal/providers"
 )
 
 // Every stage implements jobs.Keyed. The hash covers what the stage reads: the episode, the
@@ -69,17 +70,29 @@ func (s *scriptStage) InputHash(ctx context.Context, j *jobs.Job) (string, error
 			return "", err
 		}
 	}
-	return d.inputHash(ctx, j.RunID, map[string]any{"episode": e, "feedback": feedback, "llm": d.LLM.Info(), "characters": chars,
+	llm, err := resolve[providers.LLM](d, providers.TaskScript)
+	if err != nil {
+		return "", err
+	}
+	return d.inputHash(ctx, j.RunID, map[string]any{"episode": e, "feedback": feedback, "llm": llm.Info(), "characters": chars,
 		"summaries": sums, "retries": d.Settings.ScriptRetries, "prompt": []int{scriptPromptVersion, scriptPromptVersionCanon}})
 }
 
 func (s *ttsStage) InputHash(ctx context.Context, j *jobs.Job) (string, error) {
-	return s.d.downstreamHash(ctx, j, map[string]any{"voice": s.d.Voice.Info()}, artifacts.Script)
+	voice, err := resolve[providers.Voice](s.d, providers.TaskTTS)
+	if err != nil {
+		return "", err
+	}
+	return s.d.downstreamHash(ctx, j, map[string]any{"voice": voice.Info()}, artifacts.Script)
 }
 
 func (s *imagesStage) InputHash(ctx context.Context, j *jobs.Job) (string, error) {
+	images, err := resolve[providers.ImageGen](s.d, providers.TaskImages)
+	if err != nil {
+		return "", err
+	}
 	st := s.d.Settings
-	return s.d.downstreamHash(ctx, j, map[string]any{"images": s.d.Images.Info(), "w": st.ImageWidth, "h": st.ImageHeight,
+	return s.d.downstreamHash(ctx, j, map[string]any{"images": images.Info(), "w": st.ImageWidth, "h": st.ImageHeight,
 		"lora": st.LoraStrength, "style": styleVersion, "episode": j.EpisodeID}, artifacts.Script)
 }
 

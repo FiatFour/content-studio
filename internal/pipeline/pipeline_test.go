@@ -57,7 +57,37 @@ type harness struct {
 	worker *jobs.Worker
 	llm    *fake.LLM
 	ep     int64
+	// cloud is registered as a cloud provider for every capability; no test may ever call it.
+	cloud *fake.CloudSpy
+	// What is registered as the local providers; the set* helpers swap one and rebuild the registry.
+	llmP    providers.LLM
+	images  providers.ImageGen
+	voice   providers.Voice
+	segment providers.Segmenter
 }
+
+func (h *harness) register() {
+	reg := providers.NewRegistry(false)
+	for _, r := range []providers.Registration{
+		{Name: "test-llm", Kind: providers.KindLocal, Capability: providers.CapLLM, Impl: h.llmP},
+		{Name: "test-images", Kind: providers.KindLocal, Capability: providers.CapImage, Impl: h.images},
+		{Name: "test-voice", Kind: providers.KindLocal, Capability: providers.CapTTS, Impl: h.voice},
+		{Name: "test-segment", Kind: providers.KindLocal, Capability: providers.CapSegment, Impl: h.segment},
+		{Name: "cloud-llm", Kind: providers.KindCloud, Capability: providers.CapLLM, Impl: h.cloud},
+		{Name: "cloud-images", Kind: providers.KindCloud, Capability: providers.CapImage, Impl: h.cloud},
+		{Name: "cloud-voice", Kind: providers.KindCloud, Capability: providers.CapTTS, Impl: h.cloud},
+		{Name: "cloud-segment", Kind: providers.KindCloud, Capability: providers.CapSegment, Impl: h.cloud},
+	} {
+		if err := reg.Register(r); err != nil {
+			panic(err)
+		}
+	}
+	h.deps.Providers = reg
+}
+
+func (h *harness) setLLM(l providers.LLM)         { h.llmP = l; h.register() }
+func (h *harness) setImages(i providers.ImageGen) { h.images = i; h.register() }
+func (h *harness) setVoice(v providers.Voice)     { h.voice = v; h.register() }
 
 func newHarness(t *testing.T, llmResponses ...string) *harness {
 	t.Helper()
@@ -72,7 +102,6 @@ func newHarness(t *testing.T, llmResponses ...string) *harness {
 	llm := &fake.LLM{Responses: llmResponses}
 	deps := &pipeline.Deps{
 		DB: db, Store: &artifacts.Store{Root: t.TempDir()}, Queue: q,
-		LLM: llm, Images: &fake.Images{}, Voice: &fake.Voice{SecondsPerRune: 0.09}, Segmenter: fake.Segmenter{},
 		GPU:   &providers.GPU{},
 		Tools: media.Tools{FFmpeg: "/usr/bin/ffmpeg", FFprobe: "/usr/bin/ffprobe"},
 		Settings: pipeline.Settings{ImageWidth: 96, ImageHeight: 168, OutWidth: 144, OutHeight: 256, FPS: 10,
@@ -80,7 +109,10 @@ func newHarness(t *testing.T, llmResponses ...string) *harness {
 		Log: log,
 	}
 	w := &jobs.Worker{Queue: q, Stages: deps.Stages(), Log: log}
-	return &harness{db: db, deps: deps, worker: w, llm: llm, ep: ep}
+	h := &harness{db: db, deps: deps, worker: w, llm: llm, ep: ep, cloud: &fake.CloudSpy{},
+		llmP: llm, images: &fake.Images{}, voice: &fake.Voice{SecondsPerRune: 0.09}, segment: fake.Segmenter{}}
+	h.register()
+	return h
 }
 
 func (h *harness) drain(t *testing.T) {

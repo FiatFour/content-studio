@@ -11,6 +11,7 @@ import (
 	"github.com/fiat/content-studio/internal/artifacts"
 	"github.com/fiat/content-studio/internal/jobs"
 	"github.com/fiat/content-studio/internal/media"
+	"github.com/fiat/content-studio/internal/providers"
 )
 
 // referenceText is what each character says once to create their voice. Every later line is
@@ -31,10 +32,14 @@ func (s *ttsStage) Run(ctx context.Context, j *jobs.Job, progress func(int, int)
 	if err != nil {
 		return nil, err
 	}
-	if err := d.GPU.Acquire(ctx, gpuHolder(d.Voice)); err != nil {
+	voice, err := resolve[providers.Voice](d, providers.TaskTTS)
+	if err != nil {
 		return nil, err
 	}
-	info := d.Voice.Info()
+	if err := d.GPU.Acquire(ctx, gpuHolder(voice)); err != nil {
+		return nil, err
+	}
+	info := voice.Info()
 	if err := d.Queue.SetProvider(ctx, j.ID, info.Provider, info.Model); err != nil {
 		return nil, err
 	}
@@ -49,7 +54,7 @@ func (s *ttsStage) Run(ctx context.Context, j *jobs.Job, progress func(int, int)
 		progress(i, total)
 		if _, ok := refs[l.Speaker]; !ok {
 			c, _ := script.Character(l.Speaker)
-			wav, err := d.Voice.Design(ctx, c.Voice, referenceText, int(j.EpisodeID))
+			wav, err := voice.Design(ctx, c.Voice, referenceText, int(j.EpisodeID))
 			if err != nil {
 				return nil, err
 			}
@@ -62,7 +67,7 @@ func (s *ttsStage) Run(ctx context.Context, j *jobs.Job, progress func(int, int)
 			}
 			refs[l.Speaker], refArts[l.Speaker] = wav, a
 		}
-		wav, err := d.Voice.Clone(ctx, refs[l.Speaker], l.Text, int(j.EpisodeID)*1000+i)
+		wav, err := voice.Clone(ctx, refs[l.Speaker], l.Text, int(j.EpisodeID)*1000+i)
 		if err != nil {
 			return nil, err
 		}

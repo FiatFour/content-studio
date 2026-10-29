@@ -57,7 +57,7 @@ func canonHarness(t *testing.T, responses ...string) (*harness, *recordingLLM, i
 	t.Helper()
 	h := newHarness(t, responses...)
 	rec := &recordingLLM{LLM: h.llm}
-	h.deps.LLM = rec
+	h.setLLM(rec)
 	ctx := context.Background()
 	var pid int64
 	if err := h.db.QueryRow(ctx, `SELECT project_id FROM episodes WHERE id = $1`, h.ep).Scan(&pid); err != nil {
@@ -105,7 +105,7 @@ func runScript(t *testing.T, h *harness) (runID int64, stored *pipeline.Script) 
 func TestScriptWithoutSeriesCharactersIsUnchanged(t *testing.T) {
 	h := newHarness(t, fakeScript(t))
 	rec := &recordingLLM{LLM: h.llm}
-	h.deps.LLM = rec
+	h.setLLM(rec)
 	_, s := runScript(t, h)
 	if s == nil || len(s.Characters) != 2 || s.Characters[0].Look != "elderly Thai woman, grey bun, floral blouse" {
 		t.Fatalf("stored script %+v", s)
