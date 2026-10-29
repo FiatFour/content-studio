@@ -188,10 +188,10 @@ func (s *Server) cancelRun(c echo.Context) error {
 		return err
 	}
 	ctx := c.Request().Context()
-	if err := s.Queue.RequestCancel(ctx, id); err != nil {
-		return err
-	}
-	if err := s.auditAfterQueue(ctx, audit.Entry{Actor: owner, Action: "job.cancel", TargetType: "run", TargetID: id}); err != nil {
+	err = s.Queue.RequestCancelTx(ctx, id, func(tx pgx.Tx) error {
+		return audit.Record(ctx, tx, audit.Entry{Actor: owner, Action: "job.cancel", TargetType: "run", TargetID: id})
+	})
+	if err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, map[string]bool{"ok": true})
@@ -203,22 +203,13 @@ func (s *Server) retryRun(c echo.Context) error {
 		return err
 	}
 	ctx := c.Request().Context()
-	runID, err := s.Queue.Resume(ctx, id)
+	runID, err := s.Queue.ResumeTx(ctx, id, func(tx pgx.Tx, resumed int64) error {
+		return audit.Record(ctx, tx, audit.Entry{Actor: owner, Action: "job.retry", TargetType: "run", TargetID: id, Detail: map[string]any{"resumed_run_id": resumed}})
+	})
 	if err != nil {
 		return err
 	}
-	if err := s.auditAfterQueue(ctx, audit.Entry{Actor: owner, Action: "job.retry", TargetType: "run", TargetID: id, Detail: map[string]any{"resumed_run_id": runID}}); err != nil {
-		return err
-	}
 	return c.JSON(http.StatusOK, map[string]any{"ok": true, "run_id": runID})
-}
-
-// auditAfterQueue records a queue action in its own transaction right after the queue committed it.
-// Queue.RequestCancel and Queue.Resume own their transactions, so the audit row cannot join them
-// yet (the queue is being reworked; limitation recorded in docs/spec/security-ops.md). A crash
-// between the two commits loses the row, and a failure here is returned so it is never silent.
-func (s *Server) auditAfterQueue(ctx context.Context, e audit.Entry) error {
-	return pgx.BeginFunc(ctx, s.DB, func(tx pgx.Tx) error { return audit.Record(ctx, tx, e) })
 }
 
 // rerender starts a render+QA run from the latest full or rewrite run whose subtitles stage completed.

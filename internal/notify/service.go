@@ -83,12 +83,25 @@ func (s *Service) Toggles(ctx context.Context) ([]Toggle, error) {
 var ErrUnknownEvent = errors.New("unknown notification event")
 
 func (s *Service) SetEnabled(ctx context.Context, e Event, on bool) error {
+	return s.SetEnabledTx(ctx, e, on, nil)
+}
+
+// SetEnabledTx is SetEnabled with a hook that runs in the same transaction (the API writes the
+// audit row there). If the hook fails, the toggle rolls back too.
+func (s *Service) SetEnabledTx(ctx context.Context, e Event, on bool, hook func(pgx.Tx) error) error {
 	if _, ok := lookup(e); !ok {
 		return ErrUnknownEvent
 	}
-	_, err := s.DB.Exec(ctx, `INSERT INTO notification_settings (event, enabled) VALUES ($1, $2)
-		ON CONFLICT (event) DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now()`, string(e), on)
-	return err
+	return pgx.BeginFunc(ctx, s.DB, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `INSERT INTO notification_settings (event, enabled) VALUES ($1, $2)
+			ON CONFLICT (event) DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now()`, string(e), on); err != nil {
+			return err
+		}
+		if hook != nil {
+			return hook(tx)
+		}
+		return nil
+	})
 }
 
 // Delivery is one recorded attempt. It never holds the URL.
