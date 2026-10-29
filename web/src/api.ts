@@ -40,6 +40,12 @@ export type Review = {
   exports: { id: number; file_name: string; sha256: string; created_at: string }[];
   script_artifact_id: number | null; subtitles_artifact_id: number | null; versions: VideoVersion[];
 };
+export type CharacterStatus = "alive" | "deceased" | "moved_away";
+export type Character = {
+  id: number; slug: string; name: string; appearance: string; personality: string; voice: string;
+  arrives_on: string | null; status: CharacterStatus; status_since: string | null; lora_name: string; trigger_token: string;
+};
+export type EpisodeSummaryText = { summary: string; characters_present: string[]; open_threads: string[]; updated_at: string };
 export type System = {
   cpu_pct?: number; ram_used_mib?: number; ram_total_mib?: number; vram_used_mib?: number; vram_total_mib?: number;
   disk_free_gib?: number; disk_total_gib?: number; gpu_slot_stage: string | null; gpu_slot_episode: string | null;

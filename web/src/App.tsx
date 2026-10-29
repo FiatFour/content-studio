@@ -4,6 +4,7 @@ import { usePoll } from "./hooks";
 import { I18nProvider, useI18n, type Lang } from "./i18n";
 import { Home } from "./pages/Home";
 import { Episodes } from "./pages/Episodes";
+import { Characters } from "./pages/Characters";
 import { EpisodeDetail } from "./pages/EpisodeDetail";
 import { ReviewPage, ReviewQueue } from "./pages/Review";
 
@@ -31,6 +32,7 @@ function Shell() {
     { id: "home", label: t("menu.home"), to: "#/" },
     { id: "tower", label: t("menu.tower"), tag: t("menu.tag.m4") },
     { id: "episodes", label: t("menu.episodes"), to: "#/episodes" },
+    { id: "characters", label: t("menu.characters"), to: "#/characters" },
     { id: "review", label: t("menu.review"), to: "#/review" },
     { id: "providers", label: t("menu.providers"), tag: t("menu.tag.m2") },
     { id: "library", label: t("menu.library"), tag: t("menu.tag.m3") },
@@ -61,6 +63,7 @@ function Shell() {
       <main>
         {page === "home" && <Home sys={s} />}
         {page === "episodes" && (route[1] ? <EpisodeDetail id={Number(route[1])} /> : <Episodes />)}
+        {page === "characters" && <Characters />}
         {page === "review" && (route[1] ? <ReviewPage id={Number(route[1])} /> : <ReviewQueue />)}
       </main>
     </div>
