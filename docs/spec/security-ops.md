@@ -55,7 +55,8 @@ Limitations: the plain `Queue.RequestCancel` and `Queue.Resume` (no hook) are ke
 
 ## Artifact immutability
 **Status (M2, migration 0011):** a trigger on `artifacts` refuses DELETE, TRUNCATE, and any UPDATE that changes a column other than `validation_status`. `validation_status` is the one explicit exception because the QA stage sets it after the video row exists (`internal/pipeline/qa.go`). Tests that simulate tampering call `storetest.AllowArtifactTampering`, which disables the trigger for that test database only.
-Limitations: `artifact_parents`, `qa_results`, `approvals` and `exports` are not yet guarded by triggers. `validation_status` can still change on an already-approved artifact (approval is bound to the sha256, which cannot change). A database superuser can disable the trigger.
+**Status (M2, migration 0014):** `approvals`, `exports`, `qa_results` and `artifact_parents` are append-only: triggers refuse every UPDATE, DELETE and TRUNCATE, with no exempt column. The code only INSERTs into them (no UPDATE or DELETE exists, including re-render, reject, export and QA re-run, which append new rows), and no foreign key cascades into them, so nothing legitimate needed an exception. Restore from `pg_restore` only inserts, so it is unaffected.
+Limitations: `validation_status` can still change on an already-approved artifact (approval is bound to the sha256, which cannot change). A database superuser can disable the trigger.
 
 ## Backup and restore (M2)
 - Postgres: `pg_dump` on a schedule, with retention (e.g. 7 daily, 4 weekly).
