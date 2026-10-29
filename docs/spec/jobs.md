@@ -22,7 +22,7 @@ Legal transitions (enforce in one Go function, unit-test every pair):
 
 ```
 queued               -> running | cancelled
-running              -> completed | failed | retry_scheduled | waiting_for_resource | waiting_for_human | cancelled
+running              -> completed | failed | retry_scheduled | queued (lease expired) | waiting_for_resource | waiting_for_human | cancelled
 waiting_for_resource -> queued | cancelled
 waiting_for_human    -> queued | completed | cancelled
 retry_scheduled      -> queued | cancelled
@@ -51,6 +51,8 @@ Progress is real stage progress (e.g. 4 of 12 images done). Never animate a fake
 ### Leases and recovery
 - A worker holds a lease with a heartbeat. A job whose lease expires goes back to `queued` (or `failed` if it has hit its attempt limit).
 - Per-resource concurrency limits: GPU slot = 1 by default; per-provider limits are configurable.
+
+Status (implemented, migration 0006): `Claim` stamps `lease_owner` and `lease_expires_at` (`STUDIO_LEASE_SECONDS`, default 60). The worker heartbeats every third of the TTL. Every `RunOne` first calls `Queue.RecoverExpired`, so any live worker recovers a dead worker's job: back to `queued` (the attempt is closed with class `worker_restart`), or `failed` with a reason once `STUDIO_MAX_ATTEMPTS` is used up, or `cancelled` if the run's cancel was requested. `Complete` and `Fail` are fenced on (attempt, lease owner); a worker that lost its lease gets `ErrLeaseLost` and writes nothing, and its stage context is cancelled. Consequences: after a crash the job waits up to one TTL before another worker takes it (no immediate takeover on restart, because a restarted worker cannot tell its predecessor from a live peer), and a graceful shutdown also leaves the lease to expire. A stage that ignores context cancellation after losing its lease can still write files into its attempt directory; DB state stays correct because of the fence.
 
 ### Error classes
 | Class | Retry? |

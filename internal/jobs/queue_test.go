@@ -166,7 +166,8 @@ func TestCrashedWorkerResumesFromLastCompletedStage(t *testing.T) {
 		t.Fatal(err)
 	}
 	restarted := newWorker(db, stages)
-	if n, err := restarted.Queue.RecoverInterrupted(context.Background()); err != nil || n != 1 {
+	expireLeases(t, db)
+	if n, err := restarted.Queue.RecoverExpired(context.Background()); err != nil || n != 1 {
 		t.Fatalf("recovered %d, err %v", n, err)
 	}
 	drain(t, restarted)
@@ -186,7 +187,8 @@ func TestCrashAtAttemptLimitFailsWithReason(t *testing.T) {
 	if _, err := q.Claim(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.RecoverInterrupted(context.Background()); err != nil {
+	expireLeases(t, db)
+	if _, err := q.RecoverExpired(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if st := jobStates(t, db, runID); st["a"] != "failed:worker_restart" || runState(t, db, runID) != jobs.RunFailed {

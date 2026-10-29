@@ -39,6 +39,7 @@ type Config struct {
 	SubtitleFont string
 
 	MaxAttempts   int
+	LeaseSeconds  int
 	ScriptRetries int
 	PollInterval  time.Duration
 	StageTimeout  time.Duration
@@ -78,6 +79,7 @@ func Load() (Config, error) {
 		{"STUDIO_IMAGE_HEIGHT", 1344, &c.ImageHeight},
 		{"STUDIO_FPS", 30, &c.FPS},
 		{"STUDIO_MAX_ATTEMPTS", 3, &c.MaxAttempts},
+		{"STUDIO_LEASE_SECONDS", 60, &c.LeaseSeconds},
 		{"STUDIO_SCRIPT_RETRIES", 3, &c.ScriptRetries},
 	}
 	for _, i := range ints {

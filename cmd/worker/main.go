@@ -3,6 +3,9 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -48,7 +51,11 @@ func run(log *slog.Logger) error {
 	comfy := &providers.ComfyUI{BaseURL: cfg.ComfyURL, Checkpoint: cfg.ImageCheckpoint, Steps: cfg.ImageSteps, CFG: cfg.ImageCFG,
 		Sampler: cfg.ImageSampler, Scheduler: cfg.ImageScheduler, Client: client}
 	voice := &providers.ThaiVoice{BaseURL: cfg.ThaiVoiceURL, Client: client}
-	q := &jobs.Queue{DB: db, Plan: pipeline.FictionalSeries, MaxAttempts: cfg.MaxAttempts}
+	if cfg.LeaseSeconds < 3 {
+		return fmt.Errorf("STUDIO_LEASE_SECONDS must be at least 3")
+	}
+	q := &jobs.Queue{DB: db, Plan: pipeline.FictionalSeries, MaxAttempts: cfg.MaxAttempts,
+		Owner: workerID(), LeaseTTL: time.Duration(cfg.LeaseSeconds) * time.Second}
 	deps := &pipeline.Deps{
 		DB: db, Store: &artifacts.Store{Root: cfg.StorageRoot}, Queue: q,
 		LLM: llm, Images: comfy, Voice: voice, Segmenter: voice,
@@ -61,4 +68,18 @@ func run(log *slog.Logger) error {
 	w := &jobs.Worker{Queue: q, Stages: deps.Stages(), Log: log, PollInterval: cfg.PollInterval, RetryDelay: 10 * time.Second}
 	log.Info("worker started", "llm", cfg.LLMModel, "checkpoint", cfg.ImageCheckpoint)
 	return w.Run(ctx)
+}
+
+// workerID names this process on its job leases. The random suffix keeps a restarted worker from
+// being mistaken for its dead predecessor.
+func workerID() string {
+	host, err := os.Hostname()
+	if err != nil {
+		host = "host"
+	}
+	b := make([]byte, 4)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("%s-%d", host, os.Getpid())
+	}
+	return fmt.Sprintf("%s-%d-%s", host, os.Getpid(), hex.EncodeToString(b))
 }
