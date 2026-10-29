@@ -43,6 +43,10 @@ type Job struct {
 	Attempt     int
 	AttemptBase int
 	LeaseOwner  string
+	// IdempotencyKey is set by the worker for a stage that can hash its inputs (see Keyed). Complete
+	// records it with the completion, so the same key later finds this execution's artifacts.
+	IdempotencyKey string
+	InputHash      string
 }
 
 type Queue struct {
@@ -113,7 +117,8 @@ func (q *Queue) CreateRun(ctx context.Context, episodeID int64, kind string, par
 }
 
 func insertJob(ctx context.Context, tx pgx.Tx, runID int64, stage string, seq int, resource string) error {
-	_, err := tx.Exec(ctx, `INSERT INTO jobs (run_id, stage, seq, state, resource) VALUES ($1, $2, $3, $4, NULLIF($5, ''))`, runID, stage, seq, Queued, resource)
+	_, err := tx.Exec(ctx, `INSERT INTO jobs (run_id, stage, seq, state, resource) VALUES ($1, $2, $3, $4, NULLIF($5, ''))
+		ON CONFLICT (run_id, stage) DO NOTHING`, runID, stage, seq, Queued, resource)
 	return err
 }
 
@@ -260,6 +265,16 @@ func finishAttempt(ctx context.Context, tx pgx.Tx, j *Job, outcome State, class 
 // Complete marks the job completed in the same transaction as persist (the stage's artifact rows),
 // then queues the next stage or marks the run ready for review after the last one.
 func (q *Queue) Complete(ctx context.Context, j *Job, persist func(pgx.Tx) error) error {
+	return q.complete(ctx, j, persist, false)
+}
+
+// CompleteReused completes a job whose idempotency key already has a completed execution: no
+// artifacts are stored (the earlier execution's are the output) and no new key is recorded.
+func (q *Queue) CompleteReused(ctx context.Context, j *Job) error {
+	return q.complete(ctx, j, nil, true)
+}
+
+func (q *Queue) complete(ctx context.Context, j *Job, persist func(pgx.Tx) error, reused bool) error {
 	return pgx.BeginFunc(ctx, q.DB, func(tx pgx.Tx) error {
 		cur, err := lockRunning(ctx, tx, j)
 		if err != nil {
@@ -270,6 +285,13 @@ func (q *Queue) Complete(ctx context.Context, j *Job, persist func(pgx.Tx) error
 		}
 		if persist != nil {
 			if err := persist(tx); err != nil {
+				return err
+			}
+		}
+		if j.IdempotencyKey != "" && !reused {
+			if _, err := tx.Exec(ctx, `INSERT INTO stage_executions (idempotency_key, run_id, stage, input_hash, job_id, attempt)
+				VALUES ($1, $2, $3, $4, $5, $6)
+				ON CONFLICT (idempotency_key) DO UPDATE SET job_id = EXCLUDED.job_id, attempt = EXCLUDED.attempt, created_at = now()`, j.IdempotencyKey, j.RunID, j.Stage, j.InputHash, j.ID, j.Attempt); err != nil {
 				return err
 			}
 		}
@@ -287,6 +309,22 @@ func (q *Queue) Complete(ctx context.Context, j *Job, persist func(pgx.Tx) error
 		_, err = tx.Exec(ctx, `UPDATE workflow_runs SET state = $1, finished_at = now() WHERE id = $2`, RunReadyForReview, j.RunID)
 		return err
 	})
+}
+
+// IdempotencyKey names one execution of one stage on one input: run ID + stage + input hash.
+func IdempotencyKey(runID int64, stage, inputHash string) string {
+	return fmt.Sprintf("%d:%s:%s", runID, stage, inputHash)
+}
+
+// CompletedExecution reports whether the key has a completed execution whose artifacts are still
+// stored, and which job made them. A key whose job left no artifact rows is not reusable.
+func (q *Queue) CompletedExecution(ctx context.Context, key string) (jobID int64, found bool, err error) {
+	err = q.DB.QueryRow(ctx, `SELECT e.job_id FROM stage_executions e
+		WHERE e.idempotency_key = $1 AND EXISTS (SELECT 1 FROM artifacts a WHERE a.job_id = e.job_id)`, key).Scan(&jobID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, nil
+	}
+	return jobID, err == nil, err
 }
 
 // retryDelay is the wait before the next attempt after the attemptsUsed-th failure.

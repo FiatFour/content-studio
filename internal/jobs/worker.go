@@ -16,6 +16,13 @@ type Stage interface {
 	Run(ctx context.Context, j *Job, progress func(done, total int)) (persist func(pgx.Tx) error, err error)
 }
 
+// Keyed is implemented by a stage that can say what its inputs are. InputHash must change whenever
+// anything the stage reads changes (upstream artifacts, episode text, settings, model) and stay
+// the same otherwise. The worker turns it into the idempotency key run ID + stage + input hash.
+type Keyed interface {
+	InputHash(ctx context.Context, j *Job) (string, error)
+}
+
 type Worker struct {
 	Queue        *Queue
 	Stages       map[string]Stage
@@ -66,6 +73,13 @@ func (w *Worker) RunOne(ctx context.Context) (bool, error) {
 		return true, w.Queue.Fail(ctx, j, Errorf(ErrUnsupported, nil, "no implementation for stage %s", j.Stage))
 	}
 
+	if keyed, ok := stage.(Keyed); ok {
+		done, err := w.reuseIfCompleted(ctx, keyed, j, log)
+		if err != nil || done {
+			return true, err
+		}
+	}
+
 	stageCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go w.watchCancel(stageCtx, cancel, j.RunID)
@@ -99,6 +113,30 @@ func (w *Worker) RunOne(ctx context.Context) (bool, error) {
 	}
 	log.Warn("job failed", "error_class", se.Class, "err", err, "duration_s", time.Since(start).Seconds())
 	return true, w.leaseErr(w.Queue.Fail(ctx, j, se), log)
+}
+
+// reuseIfCompleted sets the job's idempotency key and, when that key already completed, completes
+// the job from the earlier execution's artifacts without running the stage. A stage whose input
+// cannot be hashed runs without a key; its own validation then reports what is wrong.
+func (w *Worker) reuseIfCompleted(ctx context.Context, k Keyed, j *Job, log *slog.Logger) (bool, error) {
+	hash, err := k.InputHash(ctx, j)
+	if err != nil {
+		if ctx.Err() != nil {
+			return false, ctx.Err()
+		}
+		log.Warn("stage input could not be hashed; running without an idempotency key", "err", err)
+		return false, nil
+	}
+	j.InputHash, j.IdempotencyKey = hash, IdempotencyKey(j.RunID, j.Stage, hash)
+	orig, found, err := w.Queue.CompletedExecution(ctx, j.IdempotencyKey)
+	if err != nil || !found {
+		return false, err
+	}
+	if err := w.leaseErr(w.Queue.CompleteReused(ctx, j), log); err != nil {
+		return false, err
+	}
+	log.Info("stage skipped: same input already completed", "idempotency_key", j.IdempotencyKey, "artifacts_of_job", orig)
+	return true, nil
 }
 
 // leaseErr turns ErrLeaseLost into a logged non-error: another worker owns the job now and its
