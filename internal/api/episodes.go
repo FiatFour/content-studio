@@ -150,10 +150,17 @@ func (s *Server) getEpisode(c echo.Context) error {
 	ctx := c.Request().Context()
 	var e struct {
 		episodeSummary
-		Idea string `json:"idea"`
+		Idea        string  `json:"idea"`
+		InStoryDate *string `json:"in_story_date"`
 	}
-	if err := s.DB.QueryRow(ctx, `SELECT id, number, title, idea, target_duration_s, created_at FROM episodes WHERE id = $1`, id).
-		Scan(&e.ID, &e.Number, &e.Title, &e.Idea, &e.TargetDurationS, &e.CreatedAt); err != nil {
+	var inStory *time.Time
+	if err := s.DB.QueryRow(ctx, `SELECT id, number, title, idea, target_duration_s, created_at, in_story_date FROM episodes WHERE id = $1`, id).
+		Scan(&e.ID, &e.Number, &e.Title, &e.Idea, &e.TargetDurationS, &e.CreatedAt, &inStory); err != nil {
+		return err
+	}
+	e.InStoryDate = fmtDate(inStory)
+	summary, err := s.loadSummary(ctx, id)
+	if err != nil {
 		return err
 	}
 	runs, err := s.loadRuns(ctx, id, 20)
@@ -164,7 +171,7 @@ func (s *Server) getEpisode(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, map[string]any{"episode": e, "runs": runs, "videos": videos})
+	return c.JSON(http.StatusOK, map[string]any{"episode": e, "runs": runs, "videos": videos, "summary": summary})
 }
 
 func (s *Server) createEpisode(c echo.Context) error {
@@ -172,6 +179,7 @@ func (s *Server) createEpisode(c echo.Context) error {
 		Title           string `json:"title"`
 		Idea            string `json:"idea"`
 		TargetDurationS int    `json:"target_duration_s"`
+		InStoryDate     string `json:"in_story_date"`
 	}
 	if err := bind(c, &req); err != nil {
 		return err
@@ -185,23 +193,23 @@ func (s *Server) createEpisode(c echo.Context) error {
 	case req.TargetDurationS < 60 || req.TargetDurationS > 120:
 		return fail(http.StatusBadRequest, "target length must be 60 to 120 seconds")
 	}
+	inStory, err := parseDate("in_story_date", req.InStoryDate)
+	if err != nil {
+		return err
+	}
 	ctx := c.Request().Context()
 	var episodeID int64
-	err := pgx.BeginFunc(ctx, s.DB, func(tx pgx.Tx) error {
-		var projectID int64
-		err := tx.QueryRow(ctx, `SELECT id FROM projects WHERE profile = $1 ORDER BY id LIMIT 1`, pipeline.FictionalSeries.Profile).Scan(&projectID)
-		if err == pgx.ErrNoRows {
-			err = tx.QueryRow(ctx, `INSERT INTO projects (name, profile) VALUES ('Life Sim Sitcom', $1) RETURNING id`, pipeline.FictionalSeries.Profile).Scan(&projectID)
-		}
+	err = pgx.BeginFunc(ctx, s.DB, func(tx pgx.Tx) error {
+		projectID, err := ensureProject(ctx, tx)
 		if err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, projectID); err != nil {
 			return err
 		}
-		return tx.QueryRow(ctx, `INSERT INTO episodes (project_id, number, title, idea, target_duration_s)
-			VALUES ($1, (SELECT coalesce(max(number), 0) + 1 FROM episodes WHERE project_id = $1), $2, $3, $4) RETURNING id`,
-			projectID, req.Title, req.Idea, req.TargetDurationS).Scan(&episodeID)
+		return tx.QueryRow(ctx, `INSERT INTO episodes (project_id, number, title, idea, target_duration_s, in_story_date)
+			VALUES ($1, (SELECT coalesce(max(number), 0) + 1 FROM episodes WHERE project_id = $1), $2, $3, $4, $5) RETURNING id`,
+			projectID, req.Title, req.Idea, req.TargetDurationS, inStory).Scan(&episodeID)
 	})
 	if err != nil {
 		return err

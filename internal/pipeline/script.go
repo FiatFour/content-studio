@@ -10,12 +10,14 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
 	"github.com/fiat/content-studio/internal/artifacts"
+	"github.com/fiat/content-studio/internal/canon"
 	"github.com/fiat/content-studio/internal/jobs"
 )
 
@@ -209,7 +211,51 @@ func sha256Hex(b []byte) string {
 	return hex.EncodeToString(h[:])
 }
 
-const scriptPromptVersion = 3
+const (
+	scriptPromptVersion = 3
+	// scriptPromptVersionCanon is recorded instead when the prompt carries the story bible block.
+	scriptPromptVersionCanon = 4
+	// recentSummaryCount bounds how many earlier episode summaries reach the prompt.
+	recentSummaryCount = 3
+)
+
+// canonInstructions is appended after the canon block. The model's characters are still untrusted:
+// checkCanon validates them and canonicalCharacters overwrites look and voice from the database.
+const canonInstructions = `
+The "characters" array must contain only ids from the series characters above, and every dialogue speaker must be one of them. Copy name, look and voice from the series data (look is the character's appearance). Do not invent characters. This overrides the 2 to 4 characters rule only in that the cast comes from the series.`
+
+// checkCanon is the deterministic story-bible check: every declared character is a series character
+// and every speaker is present on the episode's in-story date. The message goes back to the model.
+func checkCanon(s *Script, chars []canon.Character, at *time.Time) error {
+	known := make(map[string]bool, len(chars))
+	for _, c := range chars {
+		known[c.Slug] = true
+	}
+	ids := make([]string, 0, len(s.Characters))
+	for _, c := range s.Characters {
+		if !known[c.ID] {
+			return fmt.Errorf("character %q is not a character of this series; use only the series character ids", c.ID)
+		}
+		ids = append(ids, c.ID)
+	}
+	for _, l := range s.Lines() {
+		ids = append(ids, l.Speaker)
+	}
+	return canon.CheckSpeakers(ids, chars, at)
+}
+
+// canonicalCharacters replaces the model's name, look and voice with the stored values. Call it only
+// after checkCanon passed, so every id resolves.
+func canonicalCharacters(s *Script, chars []canon.Character) {
+	bySlug := make(map[string]canon.Character, len(chars))
+	for _, c := range chars {
+		bySlug[c.Slug] = c
+	}
+	for i, sc := range s.Characters {
+		c := bySlug[sc.ID]
+		s.Characters[i] = Character{ID: c.Slug, Name: c.Name, Look: c.Appearance, Voice: c.Voice}
+	}
+}
 
 func scriptPrompt(e Episode, feedback string) string {
 	p := fmt.Sprintf(`You write one episode of an ORIGINAL adult-animated life-simulation sitcom for a vertical phone video.
@@ -254,7 +300,19 @@ func (s *scriptStage) Run(ctx context.Context, j *jobs.Job, progress func(int, i
 	if err != nil {
 		return nil, err
 	}
-	base := scriptPrompt(e, feedback)
+	chars, err := canon.Characters(ctx, d.DB, e.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	base, promptVersion := scriptPrompt(e, feedback), scriptPromptVersion
+	if len(chars) > 0 {
+		sums, err := canon.RecentSummaries(ctx, d.DB, e.ProjectID, e.Number, recentSummaryCount)
+		if err != nil {
+			return nil, err
+		}
+		base += "\n\n" + canon.PromptBlock(chars, sums) + canonInstructions
+		promptVersion = scriptPromptVersionCanon
+	}
 	prompt := base
 	tries := max(d.Settings.ScriptRetries, 1)
 	var lastErr error
@@ -265,6 +323,11 @@ func (s *scriptStage) Run(ctx context.Context, j *jobs.Job, progress func(int, i
 			return nil, err
 		}
 		script, verr := ValidateScript(raw, e.TargetDurationS)
+		if verr == nil && len(chars) > 0 {
+			if verr = checkCanon(script, chars, e.InStoryDate); verr == nil {
+				canonicalCharacters(script, chars)
+			}
+		}
 		if verr != nil {
 			lastErr = verr
 			d.Log.Warn("script rejected", "job_id", j.ID, "try", i+1, "reason", verr.Error())
@@ -276,7 +339,7 @@ func (s *scriptStage) Run(ctx context.Context, j *jobs.Job, progress func(int, i
 		if err != nil {
 			return nil, err
 		}
-		promptDoc, err := json.Marshal(map[string]any{"template_version": scriptPromptVersion, "prompt": prompt, "schema": json.RawMessage(scriptSchemaJSON)})
+		promptDoc, err := json.Marshal(map[string]any{"template_version": promptVersion, "prompt": prompt, "schema": json.RawMessage(scriptSchemaJSON)})
 		if err != nil {
 			return nil, err
 		}

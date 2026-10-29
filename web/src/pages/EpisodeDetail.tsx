@@ -1,10 +1,59 @@
-import { useState } from "react";
-import { api, ApiError, contentUrl, type ArtifactRow, type Run, type VideoVersion } from "../api";
+import { useState, type FormEvent } from "react";
+import { api, ApiError, contentUrl, type ArtifactRow, type Character, type EpisodeSummaryText, type Run, type VideoVersion } from "../api";
 import { usePoll } from "../hooks";
 import { useI18n, type Key } from "../i18n";
 import { Bar, Card, StateBadge, agentColor, fmtBytes, fmtTime } from "../ui";
 
-type Detail = { episode: { id: number; number: number; title: string; idea: string; target_duration_s: number }; runs: Run[]; videos: VideoVersion[] };
+type Detail = {
+  episode: { id: number; number: number; title: string; idea: string; target_duration_s: number; in_story_date: string | null };
+  runs: Run[]; videos: VideoVersion[]; summary: EpisodeSummaryText | null;
+};
+
+// CanonCard edits the owner-written story bible entries of one episode. Its form state is seeded once
+// from the loaded episode, so the 1.5 s poll of the page never overwrites what is being typed.
+function CanonCard({ id, inStoryDate, summary }: { id: number; inStoryDate: string | null; summary: EpisodeSummaryText | null }) {
+  const { t } = useI18n();
+  const chars = usePoll<{ characters: Character[] }>("/characters", 10000);
+  const [date, setDate] = useState(inStoryDate ?? "");
+  const [text, setText] = useState(summary?.summary ?? "");
+  const [present, setPresent] = useState<string[]>(summary?.characters_present ?? []);
+  const [threads, setThreads] = useState((summary?.open_threads ?? []).join("\n"));
+  const [dateMsg, setDateMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [sumMsg, setSumMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const run = async (path: string, body: unknown, done: (m: { ok: boolean; text: string }) => void) => {
+    setBusy(true); done({ ok: true, text: t("episode.saving") });
+    try { await api(path, { method: "PUT", body }); done({ ok: true, text: t("episode.saved") }); }
+    catch (x) { done({ ok: false, text: x instanceof ApiError ? x.message : t("app.error") }); }
+    finally { setBusy(false); }
+  };
+  const saveDate = (e: FormEvent) => { e.preventDefault(); void run(`/episodes/${id}/in-story-date`, { in_story_date: date }, setDateMsg); };
+  const saveSummary = (e: FormEvent) => {
+    e.preventDefault();
+    void run(`/episodes/${id}/summary`, { summary: text, characters_present: present, open_threads: threads.split("\n") }, setSumMsg);
+  };
+  const msg = (m: { ok: boolean; text: string } | null) => m && <p role={m.ok ? "status" : "alert"} className={`mt-2 text-sm ${m.ok ? "text-green" : "text-red"}`}>{m.text}</p>;
+  return <Card title={t("episode.canon.title")}>
+    <form onSubmit={saveDate} className="mb-4 flex flex-wrap items-end gap-3">
+      <div><label htmlFor="ep-date" className="mb-1 block text-sm">{t("episode.inStoryDate")}</label>
+        <input id="ep-date" type="date" className="field mono" value={date} onChange={(e) => { setDate(e.target.value); setDateMsg(null); }} /></div>
+      <button className="btn" disabled={busy}>{t("episode.saveDate")}</button>
+      <p className="muted w-full text-xs">{t("episode.inStoryDateHint")}</p>{msg(dateMsg)}
+    </form>
+    <form onSubmit={saveSummary} className="flex flex-col gap-3">
+      <div><label htmlFor="ep-sum" className="mb-1 block text-sm">{t("episode.summary")}</label>
+        <textarea id="ep-sum" className="field" rows={4} value={text} maxLength={2000} required onChange={(e) => { setText(e.target.value); setSumMsg(null); }} />
+        <p className="muted mt-1 text-xs">{t("episode.summaryHint")}{summary ? "" : ` ${t("episode.noSummary")}`}</p></div>
+      <fieldset><legend className="mb-1 text-sm">{t("episode.present")}</legend>
+        {!chars.data || chars.data.characters.length === 0 ? <p className="muted text-sm">{t("episode.noCharacters")} <a href="#/characters">{t("menu.characters")}</a></p> :
+          <div className="flex flex-wrap gap-3">{chars.data.characters.map((c) => <label key={c.slug} className="inner flex min-h-11 items-center gap-2">
+            <input type="checkbox" checked={present.includes(c.slug)} onChange={(e) => { setPresent(e.target.checked ? [...present, c.slug] : present.filter((s) => s !== c.slug)); setSumMsg(null); }} />{c.name}</label>)}</div>}</fieldset>
+      <div><label htmlFor="ep-threads" className="mb-1 block text-sm">{t("episode.threads")}</label>
+        <textarea id="ep-threads" className="field" rows={3} value={threads} onChange={(e) => { setThreads(e.target.value); setSumMsg(null); }} /></div>
+      <div><button className="btn btn-primary" disabled={busy}>{t("episode.saveSummary")}</button>{msg(sumMsg)}</div>
+    </form>
+  </Card>;
+}
 
 export function EpisodeDetail({ id }: { id: number }) {
   const { t, lang } = useI18n();
@@ -17,13 +66,14 @@ export function EpisodeDetail({ id }: { id: number }) {
     catch (x) { setMsg(x instanceof ApiError ? x.message : t("app.error")); }
   };
   if (!d.data) return <Card>{d.error ? <p role="alert" className="text-red">{d.error.message}</p> : t("app.loading")}</Card>;
-  const { episode: e, videos } = d.data;
+  const { episode: e, videos, summary } = d.data;
   const images = (arts.data?.artifacts ?? []).filter((a) => a.type === "image");
   const failed = run?.jobs.find((j) => j.state === "failed");
   return <div className="flex flex-col gap-4">
     <a href="#/episodes">← {t("episode.back")}</a>
     <Card><h1 className="font-display text-2xl font-extrabold">{t("episodes.episode", { n: e.number })} · {e.title}</h1>
       <p className="muted mt-1"><strong>{t("episode.idea")}:</strong> {e.idea}</p><p className="muted text-sm">{t("episodes.target", { s: e.target_duration_s })}</p></Card>
+    <CanonCard id={e.id} inStoryDate={e.in_story_date} summary={summary} />
     {run && <Card title={<span className="flex flex-wrap items-center gap-3">{t("episode.stages")} <StateBadge state={run.state} /> <span className="muted text-sm">{t(`run.${run.kind}` as Key)} #{run.id}</span></span>}>
       <ol className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">{run.stages.map((s) => { const j = run.jobs.find((x) => x.stage === s);
         return <li key={s} className="inner" style={{ borderTop: `4px solid ${agentColor[s]}` }}>

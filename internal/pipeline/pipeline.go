@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -65,6 +66,7 @@ type Episode struct {
 	Number          int
 	Title, Idea     string
 	TargetDurationS int
+	InStoryDate     *time.Time // nil when the owner set none
 }
 
 // runFeedback is the note an automatic rewrite left for the scriptwriter; empty for an ordinary run.
@@ -76,8 +78,8 @@ func (d *Deps) runFeedback(ctx context.Context, runID int64) (string, error) {
 
 func (d *Deps) episode(ctx context.Context, id int64) (Episode, error) {
 	var e Episode
-	err := d.DB.QueryRow(ctx, `SELECT id, project_id, number, title, idea, target_duration_s FROM episodes WHERE id = $1`, id).
-		Scan(&e.ID, &e.ProjectID, &e.Number, &e.Title, &e.Idea, &e.TargetDurationS)
+	err := d.DB.QueryRow(ctx, `SELECT id, project_id, number, title, idea, target_duration_s, in_story_date FROM episodes WHERE id = $1`, id).
+		Scan(&e.ID, &e.ProjectID, &e.Number, &e.Title, &e.Idea, &e.TargetDurationS, &e.InStoryDate)
 	return e, err
 }
 

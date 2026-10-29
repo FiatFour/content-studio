@@ -1,0 +1,173 @@
+{
+ "checkpoint": "DreamShaperXL_Turbo_v2_1.safetensors",
+ "settings": {
+  "steps": 8,
+  "cfg": 2.0,
+  "sampler_name": "dpmpp_sde",
+  "scheduler": "karras",
+  "width": 768,
+  "height": 1344
+ },
+ "style_prompt": "adult animated sitcom style, original character design, thick black outlines, flat cel shading, bold saturated colors, expressive cartoon faces, clean vector look, vertical cinematic framing",
+ "negative_prompt": "photo, realistic, 3d render, blurry, text, watermark, logo, signature, extra fingers, deformed, multiple people",
+ "reference": {
+  "seed_base": 7000,
+  "prompt_suffix": "full body, standing, front view, facing the camera, neutral expression, plain light grey background"
+ },
+ "characters": [
+  {
+   "id": "yai_nuan",
+   "name": "Yai Nuan",
+   "appearance": "an elderly Thai grandmother, short curly silver hair, round gold-rimmed glasses, deep smile lines, small stout build, wearing a mustard yellow floral blouse and a dark green sarong skirt, jade bead necklace",
+   "scenes": [
+    {
+     "id": "t01",
+     "seed": 3101,
+     "prompt": "cooking noodles at a street stall, focused expression"
+    },
+    {
+     "id": "t02",
+     "seed": 3102,
+     "prompt": "holding a TV remote and frowning at a television, in a living room"
+    },
+    {
+     "id": "t03",
+     "seed": 3103,
+     "prompt": "waving from a boat on a river, cheerful expression"
+    },
+    {
+     "id": "t04",
+     "seed": 3104,
+     "prompt": "praying at a small temple shrine with incense, calm expression"
+    },
+    {
+     "id": "t05",
+     "seed": 3105,
+     "prompt": "carrying a heavy bag of rice up stairs, tired expression"
+    },
+    {
+     "id": "t06",
+     "seed": 3106,
+     "prompt": "talking on an old landline phone, surprised expression"
+    },
+    {
+     "id": "t07",
+     "seed": 3107,
+     "prompt": "dancing in a village festival, joyful expression"
+    },
+    {
+     "id": "t08",
+     "seed": 3108,
+     "prompt": "sleeping in a rocking chair on a porch, peaceful expression"
+    },
+    {
+     "id": "t09",
+     "seed": 3109,
+     "prompt": "pointing a finger accusingly at someone off-frame, in a hallway"
+    },
+    {
+     "id": "t10",
+     "seed": 3110,
+     "prompt": "eating mango sticky rice at a table, delighted expression"
+    },
+    {
+     "id": "t11",
+     "seed": 3111,
+     "prompt": "watering plants in a garden with a hose, humming"
+    },
+    {
+     "id": "t12",
+     "seed": 3112,
+     "prompt": "sitting in a hospital waiting room, worried expression"
+    },
+    {
+     "id": "t13",
+     "seed": 3113,
+     "prompt": "riding on the back of a motorbike, holding on tight, scared expression"
+    },
+    {
+     "id": "t14",
+     "seed": 3114,
+     "prompt": "counting coins at a market stall, suspicious expression"
+    }
+   ]
+  },
+  {
+   "id": "lung_chai",
+   "name": "Lung Chai",
+   "appearance": "a lanky middle-aged Thai uncle, messy black hair with a receding hairline, thin mustache, tired droopy eyes, wearing a faded teal polo shirt, beige cargo shorts and rubber flip-flops, silver watch on left wrist",
+   "scenes": [
+    {
+     "id": "t01",
+     "seed": 3201,
+     "prompt": "fixing a leaking sink with a wrench, annoyed expression, in a small kitchen"
+    },
+    {
+     "id": "t02",
+     "seed": 3202,
+     "prompt": "cooking fried eggs and burning them, panicked expression"
+    },
+    {
+     "id": "t03",
+     "seed": 3203,
+     "prompt": "sleeping on a sofa with a newspaper over his face"
+    },
+    {
+     "id": "t04",
+     "seed": 3204,
+     "prompt": "lifting a cheap dumbbell and straining, in a bedroom"
+    },
+    {
+     "id": "t05",
+     "seed": 3205,
+     "prompt": "arguing on a phone, waving one arm, in a courtyard"
+    },
+    {
+     "id": "t06",
+     "seed": 3206,
+     "prompt": "driving an old pickup truck, one hand on the wheel, relaxed expression"
+    },
+    {
+     "id": "t07",
+     "seed": 3207,
+     "prompt": "laughing loudly at a street food table with friends"
+    },
+    {
+     "id": "t08",
+     "seed": 3208,
+     "prompt": "walking a small dog on a leash in a park, bored expression"
+    },
+    {
+     "id": "t09",
+     "seed": 3209,
+     "prompt": "looking into an open refrigerator, disappointed expression"
+    },
+    {
+     "id": "t10",
+     "seed": 3210,
+     "prompt": "holding a lottery ticket with wide eyes, shocked expression"
+    },
+    {
+     "id": "t11",
+     "seed": 3211,
+     "prompt": "standing in the rain with a plastic bag over his head"
+    },
+    {
+     "id": "t12",
+     "seed": 3212,
+     "prompt": "playing a guitar badly on a balcony at night"
+    },
+    {
+     "id": "t13",
+     "seed": 3213,
+     "prompt": "reading a long bill with a worried face, at a table"
+    },
+    {
+     "id": "t14",
+     "seed": 3214,
+     "prompt": "washing a car with a bucket, whistling, in a driveway"
+    }
+   ]
+  }
+ ]
+}
