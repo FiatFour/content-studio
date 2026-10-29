@@ -61,6 +61,9 @@ type Artifact struct {
 // Store writes files under Root. Paths are built only from IDs and fixed names, never from input.
 type Store struct {
 	Root string
+	// WrapWriter, when set, wraps the temp-file writer. Production leaves it nil; tests use it to
+	// make a write fail the way a full disk does, deterministically.
+	WrapWriter func(io.Writer) io.Writer
 }
 
 // File is a written but not yet recorded artifact file.
@@ -109,7 +112,11 @@ func (s *Store) Write(loc Loc, typ Type, itemKey string, write func(io.Writer) e
 	}
 	defer os.Remove(tmp.Name())
 	h := sha256.New()
-	cw := &countWriter{w: io.MultiWriter(tmp, h)}
+	var dst io.Writer = tmp
+	if s.WrapWriter != nil {
+		dst = s.WrapWriter(tmp)
+	}
+	cw := &countWriter{w: io.MultiWriter(dst, h)}
 	if err := write(cw); err != nil {
 		tmp.Close()
 		return File{}, err

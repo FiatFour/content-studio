@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -181,10 +182,23 @@ func (w *Worker) heartbeat(ctx context.Context, cancel context.CancelFunc, j *Jo
 	}
 }
 
+// classify turns a stage error into a StageError. A write that failed because the disk or the
+// user's quota is full (ENOSPC, EDQUOT, found with errors.Is through any wrapping, never by text)
+// is insufficient_local_resources unless the stage already chose a class other than internal, so the
+// job waits and retries instead of failing. The stored message is fixed: the wrapped error keeps
+// the path and errno text for the log only. Read-only (EROFS) and permission (EACCES, EPERM)
+// failures are not classified this way: waiting does not fix them, a person must, so they stay
+// internal and fail the run.
 func classify(err error) *StageError {
 	var se *StageError
 	if errors.As(err, &se) {
+		if se.Class == ErrInternal && diskFull(err) {
+			return &StageError{Class: ErrInsufficientLocal, Message: diskFullMessage, Err: err}
+		}
 		return se
+	}
+	if diskFull(err) {
+		return &StageError{Class: ErrInsufficientLocal, Message: diskFullMessage, Err: err}
 	}
 	return &StageError{Class: ErrInternal, Message: "internal error in stage", Err: err}
 }
@@ -203,4 +217,10 @@ func (w *Worker) watchCancel(ctx context.Context, cancel context.CancelFunc, run
 			}
 		}
 	}
+}
+
+const diskFullMessage = "local storage is full or over quota"
+
+func diskFull(err error) bool {
+	return errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT)
 }
