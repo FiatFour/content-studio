@@ -80,6 +80,8 @@ M1a stage order is script, tts, images, subtitles, render, qa. The voice stage r
 - Every stage execution has an idempotency key (run ID + stage + input hash).
 - Re-running a completed key returns the existing artifact instead of regenerating.
 
+Status (implemented, migration 0008): a stage that implements `jobs.Keyed` (all six do, in `internal/pipeline/idempotency.go`) returns an input hash covering the episode, settings, model info and the content hashes of the artifacts it reads. The worker forms `IdempotencyKey(run, stage, hash)` before running. `Queue.Complete` records the key in `stage_executions` in the same transaction as the artifacts. If a job is claimed whose key already has a completed execution whose job stored artifacts, the worker calls `CompleteReused`: the job completes, nothing is generated or stored, and downstream stages read the original artifacts through the run. A different input hash is a different key and runs normally. If the input cannot be hashed the stage runs without a key and reports its own error. Limitations: keys are per run (a rerender run reuses nothing by key; it reads its parent's artifacts as before); there is no supported way to re-enqueue a completed job (the transition table has no `completed -> queued`), so today the guard covers duplicate enqueues and manual or future "rerun this stage" tooling; re-queuing only a middle stage of an already finished run leaves the run in `running` because nothing recomputes the run state; hash coverage is only as good as each stage's `InputHash`, so a new input must be added there.
+
 ### Uncertain outcomes (paid APIs)
 If a billable request times out after it may have been accepted:
 - Do not blindly resend it.
