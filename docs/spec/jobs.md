@@ -102,6 +102,24 @@ Simulate each and assert no corrupted state:
 - Concurrent jobs competing for GPU and budget.
 - Unauthorized approval attempt.
 
+**Status (non-cloud cases; one named deterministic test each, fake providers, real Postgres):**
+
+| Case | Test | Status |
+|---|---|---|
+| Local model unavailable | `TestFailureLocalModelUnavailable` (pipeline) | covered |
+| Invalid AI output | `TestFailureInvalidAIOutputIsRejectedAndNeverStored`, `TestFailureInvalidImageOutputIsRejected` (pipeline) | covered |
+| Worker crash and restart mid-job | lease takeover: `TestWorkerDiesMidJobAndAnotherTakesOver` (jobs/lease_test.go), `TestCrashedWorkerResumesFromLastCompletedStage` (jobs); whole pipeline: `TestFailureWorkerCrashMidJobResumesPipelineFromLastCompletedStage` | covered |
+| Disk full | `TestDiskFullLeavesNoPartialFile` (artifacts, injected ENOSPC); `TestFailureStorageWriteErrorIsSanitizedAndLeavesNothing` (pipeline, unwritable store root, not ENOSPC) | covered at store level; a real full disk is not simulated |
+| Missing media asset | `TestFailureMissingMediaAssetFailsTheStageWithoutOutput` (pipeline), `TestExportRefusedWhenApprovedFileIsMissing` (review) | covered |
+| Corrupt output file | `TestFailureCorruptPNGFromImageModelIsRejected`, `TestFailureCorruptWAVFromVoiceIsRejected`, `TestFailureCorruptMP4IsCaughtByQA` (pipeline) | covered |
+| Concurrent jobs competing for the GPU | `TestSimultaneousClaimsTakeOnlyOneGPUSlot`, `TestCompetingWorkersNeverShareTheGPU` (jobs) | covered (claims); budget half pending #18-#21 |
+| Unauthorized approval attempt | `TestApprovalIsBoundToTheExactArtifactHash` (review): approval is bound to the exact artifact hash | hash binding covered; **who may approve is pending D9** (no auth yet) |
+| Cloud provider disabled | | pending #18-#21 |
+| Budget exhausted | | pending #18-#21 |
+| Provider timeout and uncertain outcome | | pending #18-#21 |
+
+Finding from this suite: the images stage checked PNGs with `png.DecodeConfig`, which reads only the header, so a truncated PNG was stored as a valid image and only failed later in render. It now decodes the whole file.
+
 ### Run chain (M1a)
 An episode has many runs. Each run has exactly one origin, stored in `workflow_runs.kind` and `parent_run_id`, and the database enforces the pairing:
 

@@ -98,12 +98,12 @@ func (s *imagesStage) Run(ctx context.Context, j *jobs.Job, progress func(int, i
 		if err != nil {
 			return nil, err
 		}
-		cfg, err := png.DecodeConfig(bytes.NewReader(data))
+		img, err := png.Decode(bytes.NewReader(data)) // full decode: DecodeConfig reads only the header and accepts a truncated file
 		if err != nil {
 			return nil, jobs.Errorf(jobs.ErrValidationFailed, err, "shot %d image is not a valid PNG", i+1)
 		}
-		if cfg.Width != w || cfg.Height != h {
-			return nil, jobs.Errorf(jobs.ErrValidationFailed, nil, "shot %d image is %dx%d, expected %dx%d", i+1, cfg.Width, cfg.Height, w, h)
+		if cfg := img.Bounds(); cfg.Dx() != w || cfg.Dy() != h {
+			return nil, jobs.Errorf(jobs.ErrValidationFailed, nil, "shot %d image is %dx%d, expected %dx%d", i+1, cfg.Dx(), cfg.Dy(), w, h)
 		}
 		meta := map[string]any{"prompt": prompt, "negative": negativePrompt, "seed": seed, "width": w, "height": h, "style_version": styleVersion}
 		if len(loras) > 0 {
