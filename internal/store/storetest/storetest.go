@@ -62,3 +62,12 @@ func Episode(t *testing.T, db *pgxpool.Pool) (projectID, episodeID int64) {
 	}
 	return projectID, episodeID
 }
+
+// AllowArtifactTampering disables the artifact immutability trigger for this test only, so a test can
+// simulate a damaged or swapped artifact. Production code never does this.
+func AllowArtifactTampering(t *testing.T, db *pgxpool.Pool) {
+	t.Helper()
+	if _, err := db.Exec(context.Background(), `ALTER TABLE artifacts DISABLE TRIGGER artifacts_immutable_row`); err != nil {
+		t.Fatal(err)
+	}
+}
