@@ -2,6 +2,11 @@ export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
+// Called when any request other than a sign-in attempt gets 401, so the app can show the login screen
+// instead of a broken page. The server gives no reason; the UI does not guess one.
+let onUnauthorized: (() => void) | null = null;
+export const setUnauthorizedHandler = (fn: (() => void) | null) => { onUnauthorized = fn; };
+
 export async function api<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   const headers: Record<string, string> = {};
   if (init?.body !== undefined) headers["Content-Type"] = "application/json";
@@ -12,9 +17,14 @@ export async function api<T>(path: string, init?: { method?: string; body?: unkn
     throw new ApiError(0, "network");
   }
   const data = await resp.json().catch(() => ({}));
+  if (resp.status === 401 && !path.startsWith("/auth/login") && !path.startsWith("/auth/enroll")) onUnauthorized?.();
   if (!resp.ok) throw new ApiError(resp.status, (data as { error?: string }).error ?? `HTTP ${resp.status}`);
   return data as T;
 }
+
+export type AuthStatus = { enrolled: boolean; authenticated: boolean };
+export type Passkey = { id: number; label: string; transports: string[]; created_at: string; last_used_at: string | null };
+export type PasskeyList = { credentials: Passkey[]; current_credential_id: number | null };
 
 export const contentUrl = (artifactId: number) => `/api/artifacts/${artifactId}/content`;
 

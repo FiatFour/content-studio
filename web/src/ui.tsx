@@ -17,6 +17,14 @@ export function StateBadge({ state }: { state: string }) {
 import { dictionaries } from "./i18n";
 function useDict() { const { lang } = useI18n(); return dictionaries[lang]; }
 
+// LangSwitch is the TH | EN toggle shown on every screen, including the login screen.
+export function LangSwitch() {
+  const { t, lang, setLang } = useI18n();
+  return <div role="group" aria-label={t("lang.label")} className="flex overflow-hidden rounded-xl border-2 border-outline">
+    {(["th", "en"] as const).map((l) => <button key={l} className="btn !rounded-none !border-0" aria-pressed={lang === l} style={{ background: lang === l ? "var(--color-blue)" : undefined, color: lang === l ? "#0B1424" : undefined }} onClick={() => setLang(l)}>{l.toUpperCase()}</button>)}
+  </div>;
+}
+
 export function Card({ title, children, className = "" }: { title?: ReactNode; children: ReactNode; className?: string }) {
   return <section className={`card ${className}`}>{title && <h2 className="mb-3 font-display text-lg font-extrabold">{title}</h2>}{children}</section>;
 }

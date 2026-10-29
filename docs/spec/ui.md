@@ -41,6 +41,10 @@ Orchestrator `#8FB3D9`, Script `#F28DB2`, Art `#59C9B9`, Voice `#B49AF2`, Render
 - **Top bar:** logo + tagline · date/time · chips (episodes done today, CPU, RAM, VRAM, cloud spend this month) · TH/EN toggle · owner avatar ("Fiat · owner · approver").
 - **Left menu:** Home · AI agent tower · Episodes · Needs your review (count badge) · Providers & budget (M2 tag) · Library (M3 tag, inert). Plus one context card (GPU slot, review queue or guardrails).
 
+## Sign-in and Security (D9)
+- Logged out, the app shows only a centred card with the TH | EN toggle: **enrollment** (one-time code from `go run ./cmd/server enroll`, passkey name) while no passkey exists, otherwise **Sign in with a passkey**. Failure messages are fixed and never say why (no hint whether a code or key was wrong). A 401 from any request returns the user here with "session ended". Open the app at `http://localhost:PORT` (passkeys need a domain name); the card says so when the page cannot run WebAuthn.
+- The top bar has **Sign out**. Menu item **Security** lists passkeys (label, created, last used, "in use now"), adds one (needs the current session) and removes one with a two-step confirm; the last passkey has no remove button and says why. Language is kept in `localStorage` until sign-in, then saved in the backend as before.
+
 ## Screens
 1. **Home / dashboard:** project banner, four summary tiles, active jobs table (real stage progress), this machine (VRAM/RAM/disk, GPU slot), waiting for review, recent exports, recent failures with "Retry stage".
 2. **Episode production:** episode header and state, 8-stage strip (each stage tagged with its agent colour), 9:16 shot grid with real per-shot status, current-stage details (attempt, provider, model, measured time per shot, ETA computed from measurements), sanitized job log, artifacts so far, Cancel run.

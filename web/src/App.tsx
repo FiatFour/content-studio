@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type System } from "./api";
+import { api, ApiError, setUnauthorizedHandler, type AuthStatus, type System } from "./api";
 import { usePoll } from "./hooks";
 import { I18nProvider, useI18n, type Lang } from "./i18n";
 import { Home } from "./pages/Home";
@@ -7,6 +7,9 @@ import { Episodes } from "./pages/Episodes";
 import { Characters } from "./pages/Characters";
 import { EpisodeDetail } from "./pages/EpisodeDetail";
 import { ReviewPage, ReviewQueue } from "./pages/Review";
+import { LoginScreen } from "./pages/Login";
+import { Security } from "./pages/Security";
+import { LangSwitch } from "./ui";
 
 function useHash(): string[] {
   const [h, setH] = useState(location.hash);
@@ -14,14 +17,57 @@ function useHash(): string[] {
   return h.replace(/^#\/?/, "").split("/").filter(Boolean);
 }
 
+// Before sign-in the backend refuses /settings, so the language choice lives in this browser until then.
+const storedLang = (): Lang => (localStorage.getItem("lang") === "en" ? "en" : "th");
+
 export function App() {
-  const settings = usePoll<{ ui_lang: Lang }>("/settings", 30000);
-  const onLang = useCallback((l: Lang) => { void api("/settings", { method: "PUT", body: { ui_lang: l } }).catch(() => undefined); }, []);
-  return <I18nProvider initial={settings.data?.ui_lang ?? "th"} onChange={onLang}><Shell /></I18nProvider>;
+  const [status, setStatus] = useState<AuthStatus | null>(null);
+  const [unreachable, setUnreachable] = useState(false);
+  const [expired, setExpired] = useState(false);
+  const refresh = useCallback(async () => {
+    try { setStatus(await api<AuthStatus>("/auth/status")); setUnreachable(false); } catch (e) { setUnreachable(e instanceof ApiError && (e.status === 0 || e.status >= 500)); }
+  }, []);
+  // Any 401 anywhere (an expired or revoked session) drops back to the login screen.
+  useEffect(() => {
+    setUnauthorizedHandler(() => { setExpired(true); setStatus((s) => (s ? { ...s, authenticated: false } : s)); });
+    return () => setUnauthorizedHandler(null);
+  }, []);
+  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { if (!status) { const id = setInterval(() => void refresh(), 3000); return () => clearInterval(id); } }, [status, refresh]);
+  const onLangLocal = useCallback((l: Lang) => localStorage.setItem("lang", l), []);
+
+  if (!status) return <I18nProvider initial={storedLang()} onChange={onLangLocal}><Pending unreachable={unreachable} /></I18nProvider>;
+  if (!status.authenticated) {
+    return <I18nProvider initial={storedLang()} onChange={onLangLocal}>
+      <LoginScreen status={status} expired={expired} onDone={() => { setExpired(false); void refresh(); }} />
+    </I18nProvider>;
+  }
+  return <Authed onSignedOut={() => { setExpired(false); void refresh(); }} />;
 }
 
-function Shell() {
-  const { t, lang, setLang } = useI18n();
+function Pending({ unreachable }: { unreachable: boolean }) {
+  const { t } = useI18n();
+  return <div className="mx-auto flex min-h-screen max-w-[520px] flex-col justify-center gap-4 p-4">
+    <div className="flex justify-end"><LangSwitch /></div>
+    {unreachable ? <div role="alert" className="card border-red text-red"><strong>{t("net.disconnected")}</strong> <span className="muted">{t("net.disconnectedHelp")}</span></div>
+      : <div className="card muted">{t("auth.checking")}</div>}
+  </div>;
+}
+
+function Authed({ onSignedOut }: { onSignedOut: () => void }) {
+  const settings = usePoll<{ ui_lang: Lang }>("/settings", 30000);
+  const onLang = useCallback((l: Lang) => { localStorage.setItem("lang", l); void api("/settings", { method: "PUT", body: { ui_lang: l } }).catch(() => undefined); }, []);
+  return <I18nProvider initial={settings.data?.ui_lang ?? storedLang()} onChange={onLang}><Shell onSignedOut={onSignedOut} /></I18nProvider>;
+}
+
+function Shell({ onSignedOut }: { onSignedOut: () => void }) {
+  const { t } = useI18n();
+  const [leaving, setLeaving] = useState(false);
+  const logout = async () => {
+    setLeaving(true);
+    try { await api("/auth/logout", { method: "POST", body: {} }); } catch { /* a 401 here means the session is already gone */ }
+    onSignedOut();
+  };
   const route = useHash();
   const sys = usePoll<System>("/system", 3000);
   const health = usePoll<{ status: string }>("/health", 4000);
@@ -34,6 +80,7 @@ function Shell() {
     { id: "episodes", label: t("menu.episodes"), to: "#/episodes" },
     { id: "characters", label: t("menu.characters"), to: "#/characters" },
     { id: "review", label: t("menu.review"), to: "#/review" },
+    { id: "security", label: t("menu.security"), to: "#/security" },
     { id: "providers", label: t("menu.providers"), tag: t("menu.tag.m2") },
     { id: "library", label: t("menu.library"), tag: t("menu.tag.m3") },
   ];
@@ -46,10 +93,9 @@ function Shell() {
       {chip(t("chip.ram"), s?.ram_total_mib ? `${((s.ram_used_mib ?? 0) / 1024).toFixed(1)}/${(s.ram_total_mib / 1024).toFixed(1)} GB` : t("app.na"))}
       {chip(t("chip.vram"), s?.vram_total_mib ? `${((s.vram_used_mib ?? 0) / 1024).toFixed(1)}/${(s.vram_total_mib / 1024).toFixed(1)} GB` : t("app.na"))}
       {chip(t("chip.cloud"), t("chip.cloudNone"))}
-      <div role="group" aria-label={t("lang.label")} className="flex overflow-hidden rounded-xl border-2 border-outline">
-        {(["th", "en"] as const).map((l) => <button key={l} className="btn !rounded-none !border-0" aria-pressed={lang === l} style={{ background: lang === l ? "var(--color-blue)" : undefined, color: lang === l ? "#0B1424" : undefined }} onClick={() => setLang(l)}>{l.toUpperCase()}</button>)}
-      </div>
+      <LangSwitch />
       <div className="flex items-center gap-2"><span aria-hidden className="grid h-11 w-11 place-items-center rounded-full border-[3px] border-outline bg-agent-review font-display font-extrabold text-bg">F</span><div className="text-sm"><div className="font-semibold">Fiat</div><div className="muted">{t("owner.role")}</div></div></div>
+      <button className="btn" disabled={leaving} onClick={() => void logout()}>{leaving ? t("auth.loggingOut") : t("auth.logout")}</button>
     </header>
     {down && <div role="alert" className="card border-red text-red"><strong>{t("net.disconnected")}</strong> <span className="muted">{t("net.disconnectedHelp")}</span></div>}
     <div className="grid flex-1 gap-4 md:grid-cols-[240px_1fr]">
@@ -64,6 +110,7 @@ function Shell() {
         {page === "home" && <Home sys={s} />}
         {page === "episodes" && (route[1] ? <EpisodeDetail id={Number(route[1])} /> : <Episodes />)}
         {page === "characters" && <Characters />}
+        {page === "security" && <Security />}
         {page === "review" && (route[1] ? <ReviewPage id={Number(route[1])} /> : <ReviewQueue />)}
       </main>
     </div>
