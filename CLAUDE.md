@@ -9,7 +9,8 @@ First content profile: an **original** adult-animated life-simulation sitcom.
 It is not lip-synced character animation. If a requested effect isn't supported, say so. Don't pass off a still as animation.
 
 ## Current milestone
-**M1a — Thinnest real vertical slice.** See `docs/spec/milestones.md`. M0 findings: `docs/assessment.md`.
+**M1b — Characters and a minimal story bible.** See `docs/spec/milestones.md`. M1a is closed (report: `docs/m1a-report.md`). M0 findings: `docs/assessment.md`.
+M1b so far: consistency spike, D8 decided (per-character LoRA), character records and episode summaries (API and UI), script stage fed by canon, speaker presence check. Remaining: LoRA training and use in the image stage, and the owner's acceptance (three consecutive episodes keep each main character recognizable).
 Work only on the current milestone. The other spec files describe later work, so don't build ahead.
 
 ## Non-negotiables
