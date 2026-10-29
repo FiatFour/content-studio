@@ -24,6 +24,14 @@ type ImageRequest struct {
 	Seed     int64
 	Width    int
 	Height   int
+	// Loras are applied to the model (U-Net) in order. Empty means the plain checkpoint.
+	Loras []LoraRef
+}
+
+// LoraRef names a LoRA file in the image server's loras folder and the strength to apply it at.
+type LoraRef struct {
+	Name     string  `json:"name"`
+	Strength float64 `json:"strength"`
 }
 
 type ImageGen interface {

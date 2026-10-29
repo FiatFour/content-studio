@@ -32,7 +32,9 @@ type Settings struct {
 	FPS                     int
 	SubtitleFont            string
 	ScriptRetries           int
-	ExportDir               string
+	// LoraStrength is the U-Net strength for character LoRAs; 0 means defaultLoraStrength.
+	LoraStrength float64
+	ExportDir    string
 }
 
 type Deps struct {

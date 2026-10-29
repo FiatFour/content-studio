@@ -55,7 +55,7 @@ func run(log *slog.Logger) error {
 		GPU:   &providers.GPU{Holders: []providers.GPUHolder{llm, comfy, voice}},
 		Tools: media.Tools{FFmpeg: cfg.FFmpeg, FFprobe: cfg.FFprobe},
 		Settings: pipeline.Settings{ImageWidth: cfg.ImageWidth, ImageHeight: cfg.ImageHeight, OutWidth: 1080, OutHeight: 1920,
-			FPS: cfg.FPS, SubtitleFont: cfg.SubtitleFont, ScriptRetries: cfg.ScriptRetries},
+			FPS: cfg.FPS, SubtitleFont: cfg.SubtitleFont, ScriptRetries: cfg.ScriptRetries, LoraStrength: cfg.LoraStrength},
 		Log: log,
 	}
 	w := &jobs.Worker{Queue: q, Stages: deps.Stages(), Log: log, PollInterval: cfg.PollInterval, RetryDelay: 10 * time.Second}

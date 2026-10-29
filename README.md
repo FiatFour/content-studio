@@ -43,7 +43,7 @@ Settings come from `STUDIO_*` environment variables (see `internal/config/config
 ## Known limitations
 
 - **No authentication.** The server binds to 127.0.0.1 and nothing else protects approve and export. Any local process, or a web page open in your browser, can call the API. Add auth before using this off a solo local machine (`docs/spec/security-ops.md`, decision D9).
-- Characters are not yet kept visually consistent between shots. M1b has the character records, episode summaries, script retrieval and speaker check; D8 chose per-character LoRA, but training and use in the image stage are not implemented (the LoRA name and trigger are stored, not used). Acceptance is the owner's judgement over three consecutive episodes.
+- Characters are not yet kept visually consistent between shots. M1b has the character records, episode summaries, script retrieval and speaker check; D8 chose per-character LoRA: the image stage applies a character's LoRA (U-Net only, at most 2 per shot, strength `STUDIO_LORA_STRENGTH`, default 0.8) and its trigger token when they are set on the character. Training is still a manual process, and the LoRA file must already be in ComfyUI's loras folder (the app does not check; a missing file fails the image stage, with no fallback to the plain model). Acceptance is the owner's judgement over three consecutive episodes.
 - Script length is often wrong on the first try, so a run may need one or two rewrite rounds.
 - Cloud providers, budgets, canon, notifications and the agent tower are not implemented.
 

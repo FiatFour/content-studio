@@ -49,6 +49,10 @@ type Character struct {
 	Name  string `json:"name"`
 	Look  string `json:"look"`
 	Voice string `json:"voice"`
+	// LoraName and TriggerToken come from the stored canon character, never from the model (the script
+	// schema does not allow them). Scripts stored before M1b lack them and load as empty, meaning no LoRA.
+	LoraName     string `json:"lora_name,omitempty"`
+	TriggerToken string `json:"trigger_token,omitempty"`
 }
 
 type Scene struct {
@@ -244,7 +248,7 @@ func checkCanon(s *Script, chars []canon.Character, at *time.Time) error {
 	return canon.CheckSpeakers(ids, chars, at)
 }
 
-// canonicalCharacters replaces the model's name, look and voice with the stored values. Call it only
+// canonicalCharacters replaces the model's name, look and voice with the stored values and adds the stored LoRA name and trigger. Call it only
 // after checkCanon passed, so every id resolves.
 func canonicalCharacters(s *Script, chars []canon.Character) {
 	bySlug := make(map[string]canon.Character, len(chars))
@@ -253,7 +257,7 @@ func canonicalCharacters(s *Script, chars []canon.Character) {
 	}
 	for i, sc := range s.Characters {
 		c := bySlug[sc.ID]
-		s.Characters[i] = Character{ID: c.Slug, Name: c.Name, Look: c.Appearance, Voice: c.Voice}
+		s.Characters[i] = Character{ID: c.Slug, Name: c.Name, Look: c.Appearance, Voice: c.Voice, LoraName: c.LoraName, TriggerToken: c.TriggerToken}
 	}
 }
 
