@@ -1,7 +1,7 @@
 # content-studio
 
 A local-first studio that turns an episode idea into a human-approved vertical video (1080×1920 MP4).
-Current milestone: **M1b**, characters and a minimal story bible (M1a is closed, see `docs/m1a-report.md`). Rules for contributors and agents are in `CLAUDE.md`; milestone scope is in `docs/spec/milestones.md`.
+Current milestone: **M2**, reliability, security and cost (M1a is closed, see `docs/m1a-report.md`; M1b code is done and awaits the owner's smoke run and 3-episode acceptance). Rules for contributors and agents are in `CLAUDE.md`; milestone scope is in `docs/spec/milestones.md`.
 
 The v1 output is a **motion comic**: generated stills with pan/zoom, local Thai voice, and burned-in subtitles. It is not lip-synced animation.
 
