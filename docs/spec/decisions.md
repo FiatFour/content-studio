@@ -8,12 +8,12 @@ M0 measurements and recommendations for each open item are in `docs/assessment.m
 
 | # | Decision | Blocks | Notes |
 |---|---|---|---|
-| D10 | **First cloud provider**, if any. | M2 | Verify current pricing and commercial-use terms from official docs before adding. |
 
 ## Decided
 
 | # | Decision | Answer | Date |
 |---|---|---|---|
+| D10 | **First cloud provider** | None. No cloud provider will be used; the app stays local-only. Budget, kill switch, cloud adapter and provider error mapping (issues #19-#21, #40) are closed as not planned. Reopen this decision before writing any cloud code; verify current pricing and commercial-use terms from official docs first. | 2026-10-30 |
 | D9 | **Auth approach** | Passkey (WebAuthn) with a server-side session cookie; one owner, no user management. First passkey only through a one-time terminal code (`server enroll`), later ones only from a signed-in session. Implemented with `github.com/go-webauthn/webauthn`. Details and the endpoint matrix: `security-ops.md`. | 2026-10-29 |
 | D8 | **Character consistency technique** | Per-character LoRA (option B of the M1b spike). Evidence: `spikes/m1b-consistency/RESULTS.md`. Costs to plan for: about 15 min of exclusive GPU per character (7.6 GB VRAM), a curated image set per character (the spike's set came from IP-Adapter and biased pose), and training only behind a memory limit (`systemd-run` `MemoryMax`) because an unguarded run crashed WSL. A LoRA does not fix style drift or the photographic look. | 2026-10-29 |
 | D12 | **Notification channel** | Discord, via outbound channel webhooks only (no bot, no interactions). See `notifications.md`. | 2026-10-26 |
