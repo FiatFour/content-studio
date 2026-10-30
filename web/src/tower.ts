@@ -14,11 +14,12 @@ export type EpisodeStatus = {
   run_id: number; run_state: string; floor: string | null; stages: Progress; current: Progress | null;
   pipeline?: StageStatus[]; id?: number; number?: number; title?: string;
 };
+export type Clip = { artifact_id: number; id: number; number: number; title: string; version: number; sha256: string; created_at: string };
 export type TowerState = {
   floors: Floor[];
   active_episode: EpisodeStatus | null;
   today: EpisodeStatus[];
-  awaiting_review: unknown;
+  awaiting_review: Clip | null;
   continuity: { available: boolean; note: string };
 };
 export type TowerPayload = { generated_at: string; tower: TowerState };
@@ -81,3 +82,45 @@ export const agentColour: Record<string, string> = {
   voice: "var(--color-agent-voice)", render: "var(--color-agent-render)", qa: "var(--color-agent-qa)",
   review: "var(--color-agent-review)", guardrails: "var(--color-agent-guard)", export: "var(--color-muted)",
 };
+
+// ---- side panels (T3). All values come from the payload; nothing is computed that the API does not say. ----
+
+// Floors on the progress tracker, bottom to top: the pipeline floors, then the roof export.
+export const TRACKER_CODES = ["1F", "2F", "3F", "4F", "5F", "6F", "Roof"] as const;
+export type DotKind = "check" | "pulse" | "hollow" | "failed" | "waiting";
+export type TrackerDot = { code: string; state: FloorState; kind: DotKind; yPct: number; solidBelow: boolean };
+
+const DOT_KIND: Record<FloorState, DotKind> = {
+  done: "check", active: "pulse", failed: "failed", waiting: "waiting", idle: "hollow", not_implemented: "hollow",
+};
+export const dotKindOf = (state: string): DotKind => DOT_KIND[state as FloorState] ?? "hollow";
+
+// trackerDots: blue check for a finished floor, pulsing green for the active one, hollow for those ahead.
+// solidBelow says whether the line segment under the dot is solid (the floor below is finished);
+// the segment into the roof export is always dashed because export is a human action, never automatic.
+export function trackerDots(floors: Pick<Floor, "code" | "state">[]): TrackerDot[] {
+  const by = new Map(floors.map((f) => [f.code, f.state]));
+  const out: TrackerDot[] = [];
+  for (const code of TRACKER_CODES) {
+    const state = by.get(code);
+    if (!state) continue;
+    const b = floorBox(code);
+    const prev = out[out.length - 1];
+    out.push({ code, state, kind: dotKindOf(state), yPct: ((b.y + b.h / 2) / VIEW.h) * 100, solidBelow: !!prev && prev.state === "done" && code !== "Roof" });
+  }
+  return out;
+}
+
+export type TeamRow = { code: string; agent: string; state: FloorState; tasks: number | null };
+// teamRows lists every agent (top floor first) with the real count of completed jobs; null stays null.
+export const teamRows = (floors: Floor[]): TeamRow[] =>
+  floors.map((f) => ({ code: f.code, agent: f.agent, state: f.state, tasks: f.tasks_completed }));
+export const countText = (n: number | null | undefined): string => (n === null || n === undefined ? "–" : String(n));
+
+export type Step = { stage: string; agent: string; state: string; progress: Progress | null; last: boolean };
+// pipelineSteps: the active episode's stages in order; the last step is the export step.
+export function pipelineSteps(ep: EpisodeStatus | null): Step[] {
+  const p = ep?.pipeline ?? [];
+  return p.map((s, i) => ({ stage: s.stage, agent: s.agent, state: s.state, progress: s.progress, last: i === p.length - 1 }));
+}
+export const reviewHref = (c: Pick<Clip, "artifact_id">): string => `#/review/${c.artifact_id}`;
