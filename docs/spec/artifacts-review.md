@@ -18,6 +18,12 @@ Rules:
 - Never overwrite an artifact file. A change creates a new version with lineage.
 - Files live under a storage root with paths built by the app (IDs only), never from user or model input.
 
+### History and comparison (read-only)
+- `GET /api/episodes/:id/artifact-history[?type=]` lists every version of an episode (newest first, at most 1000) with type, version, sha256, parent IDs from `artifact_parents`, and approval status. Approval status is the latest `approvals` row for that artifact whose recorded sha256 equals the artifact's sha256; a decision recorded against any other hash shows "none".
+- `GET /api/artifacts/compare?a=&b=` compares two versions of the same episode and type. JSON artifacts (script, shot plan, render spec) get a structured diff computed on the server (JSON-pointer paths, added/removed/changed, at most 500 entries, values shortened, files over 1 MiB refused). Images, video and audio are shown side by side by the web UI through `/api/artifacts/:id/content` (same limits, ranges and security as before). SRT is shown as two text panes.
+- UI: `#/history/:episodeId` and `#/compare/:a/:b`. Artifact content is rendered as text only. These views have no approve, export or re-render controls; those stay on the review screen.
+- Limitations: array diffs compare by index (an inserted shot shifts later entries); no word-level text diff.
+
 ## Render spec
 The video is described by a versioned JSON timeline, then executed by FFmpeg. Don't hardcode scenes into one giant command.
 

@@ -130,6 +130,8 @@ var protectedRoutes = []struct{ method, path, body string }{
 	{"POST", "/api/runs/1/cancel", ""},
 	{"POST", "/api/runs/1/retry", ""},
 	{"GET", "/api/artifacts/1/content", ""},
+	{"GET", "/api/episodes/1/artifact-history", ""},
+	{"GET", "/api/artifacts/compare?a=1&b=2", ""},
 	{"GET", "/api/videos/1/review", ""},
 	{"POST", "/api/videos/1/decision", `{"decision":"approved","sha256":"x"}`},
 	{"POST", "/api/videos/1/export", ""},
