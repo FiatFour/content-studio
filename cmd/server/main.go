@@ -26,6 +26,7 @@ import (
 	"github.com/fiat/content-studio/internal/jobs"
 	"github.com/fiat/content-studio/internal/notify"
 	"github.com/fiat/content-studio/internal/pipeline"
+	"github.com/fiat/content-studio/internal/providers"
 	"github.com/fiat/content-studio/internal/review"
 	"github.com/fiat/content-studio/internal/store"
 )
@@ -107,7 +108,12 @@ func run(log *slog.Logger) error {
 	srv := &api.Server{
 		DB: db, Queue: &jobs.Queue{DB: db, Plan: pipeline.FictionalSeries, MaxAttempts: cfg.MaxAttempts}, Store: st,
 		Review: &review.Service{DB: db, Store: st, ExportDir: cfg.ExportDir}, WebDir: cfg.WebDir, Log: log,
-		CloudEnabled: cfg.CloudEnabled,
+		CloudEnabled: cfg.CloudEnabled, ExportDir: cfg.ExportDir,
+		Health: []api.HealthTarget{
+			{Name: "ollama", Capability: providers.CapLLM, URL: cfg.OllamaURL, Path: "/api/tags"},
+			{Name: "comfyui", Capability: providers.CapImage, URL: cfg.ComfyURL, Path: "/system_stats"},
+			{Name: "thaivoice", Capability: providers.CapTTS, URL: cfg.ThaiVoiceURL, Path: "/health"},
+		},
 	}
 	if srv.Auth, err = newAuth(cfg, db); err != nil {
 		return err

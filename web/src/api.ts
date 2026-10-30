@@ -68,6 +68,15 @@ export type Notifications = {
 };
 export type NotifTestResult = { ok: boolean; http_status: number | null; error: string };
 export type Resource = { name: string; max_concurrent: number; running: number; waiting: number; safe_max: number; max: number };
+export type ProviderHealth = {
+  name: string; capability: string; endpoint: string; state: "up" | "down" | "unavailable"; latency_ms?: number; http_status?: number; reason?: string; checked_at: string;
+};
+export type Monitor = {
+  gpu: { available: boolean; name?: string; util_pct?: number; temp_c?: number; vram_used_mib?: number; vram_total_mib?: number };
+  disks: { name: string; free_gib: number | null; total_gib: number | null }[];
+  queue: { queued: number; running: number; waiting_for_resource: number; retry_scheduled: number };
+  gpu_slot: { max_concurrent: number; running: number; waiting: number; stage: string | null; episode: string | null };
+};
 export type Policies = { tasks: { task: string; capability: string; policy: string }[]; cloud_enabled: boolean; changeable: boolean };
 export type System = {
   cpu_pct?: number; ram_used_mib?: number; ram_total_mib?: number; vram_used_mib?: number; vram_total_mib?: number;

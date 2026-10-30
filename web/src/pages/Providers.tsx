@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, ApiError, type Notifications, type NotifTestResult, type Policies, type Resource } from "../api";
+import { api, ApiError, type Monitor, type Notifications, type NotifTestResult, type Policies, type ProviderHealth, type Resource } from "../api";
 import { usePoll } from "../hooks";
 import { dictionaries, useI18n, type Key } from "../i18n";
 import { Card, fmtTime } from "../ui";
@@ -12,10 +12,76 @@ export function Providers() {
     <Card><h1 className="font-display text-2xl font-extrabold">{t("providers.title")}</h1>
       <p className="muted">{t("providers.localOnly")}</p></Card>
     <Card title={t("providers.budget")}><p className="muted">{t("app.notImplemented")} · {t("providers.budgetHelp")}</p></Card>
+    <HealthCard />
+    <MonitorCard />
     <ResourcesCard />
     <PoliciesCard />
     <NotificationsCard />
   </div>;
+}
+
+// HealthCard shows read-only probes of the local AI services. The server decides what is probed;
+// only the scheme and host:port of each configured address are shown.
+function HealthCard() {
+  const { t, lang } = useI18n();
+  const h = usePoll<{ providers: ProviderHealth[] }>("/providers/health", 15000);
+  const reason = (r?: string) => { if (!r) return ""; const k = `health.reason.${r}`; return k in dictionaries[lang] ? t(k as Key) : r; };
+  return <Card title={t("health.title")}>
+    <p className="muted mb-3">{t("health.help")}</p>
+    {!h.data ? <p className={h.error ? "text-red" : "muted"} role={h.error ? "alert" : undefined}>{h.error ? t("health.loadFailed") : t("app.loading")}</p> : <div className="flex flex-col gap-3">
+      <ul className="flex flex-col gap-2">
+        {h.data.providers.map((p) => <li key={p.name} className="inner flex flex-wrap items-center gap-3">
+          <span className="mono mr-auto font-semibold">{p.name} <span className="muted text-sm">({p.capability})</span></span>
+          {p.endpoint && <span className="mono muted text-sm">{p.endpoint}</span>}
+          <span className={`mono inline-flex items-center gap-2 ${p.state === "up" ? "text-green" : p.state === "down" ? "text-red" : "text-amber"}`}>
+            <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-current" />{t(`health.${p.state}`)}</span>
+          {p.latency_ms !== undefined && <span className="mono text-sm">{t("health.latency", { ms: p.latency_ms })}</span>}
+          {p.reason && <span className="muted text-sm">{reason(p.reason)}</span>}
+          <span className="muted mono text-sm">{fmtTime(p.checked_at, lang)}</span>
+        </li>)}
+      </ul>
+      <div><button className="btn" onClick={h.reload}>{t("health.refresh")}</button></div>
+    </div>}
+  </Card>;
+}
+
+// MonitorCard is read-only: GPU (nvidia-smi), GPU slot, queue and disk space. A value the server could
+// not measure is shown as unavailable, never as zero.
+function MonitorCard() {
+  const { t } = useI18n();
+  const m = usePoll<Monitor>("/monitor", 5000);
+  const d = m.data;
+  const n = (v: number | undefined, unit: string) => (v === undefined ? "–" : `${v} ${unit}`);
+  return <Card title={t("mon.title")}>
+    <p className="muted mb-3">{t("mon.help")}</p>
+    {!d ? <p className={m.error ? "text-red" : "muted"} role={m.error ? "alert" : undefined}>{m.error ? t("mon.loadFailed") : t("app.loading")}</p> : <div className="flex flex-col gap-3">
+      <div className="inner flex flex-col gap-1">
+        <h3 className="font-semibold">{t("mon.gpu")}</h3>
+        {!d.gpu.available ? <p className="text-amber">{t("mon.gpuUnavailable")}</p> : <div className="mono flex flex-wrap gap-4 text-sm">
+          <span>{d.gpu.name}</span>
+          <span>{t("mon.util")}: {n(d.gpu.util_pct, "%")}</span>
+          <span>{t("mon.temp")}: {n(d.gpu.temp_c, "°C")}</span>
+          <span>{t("mon.vram")}: {d.gpu.vram_used_mib ?? "–"} / {n(d.gpu.vram_total_mib, "MiB")}</span>
+        </div>}
+      </div>
+      <div className="inner flex flex-col gap-1">
+        <h3 className="font-semibold">{t("mon.slot")}</h3>
+        <p className="mono text-sm">{d.gpu_slot.running === 0 ? t("mon.slotFree") : t("mon.slotBusy", { stage: d.gpu_slot.stage ?? "?", episode: d.gpu_slot.episode ? ` · ${d.gpu_slot.episode}` : "" })}</p>
+        <p className="muted text-sm">{t("mon.slotCount", { running: d.gpu_slot.running, max: d.gpu_slot.max_concurrent, waiting: d.gpu_slot.waiting })}</p>
+      </div>
+      <div className="inner flex flex-col gap-1">
+        <h3 className="font-semibold">{t("mon.queue")}</h3>
+        <div className="mono flex flex-wrap gap-4 text-sm">
+          <span>{t("mon.queued")}: {d.queue.queued}</span><span>{t("mon.running")}: {d.queue.running}</span>
+          <span>{t("mon.waiting")}: {d.queue.waiting_for_resource}</span><span>{t("mon.retry")}: {d.queue.retry_scheduled}</span>
+        </div>
+      </div>
+      <div className="inner flex flex-col gap-1">
+        <h3 className="font-semibold">{t("mon.disk")}</h3>
+        {d.disks.map((k) => <p key={k.name} className="mono text-sm">{t(k.name === "exports" ? "mon.disk.exports" : "mon.disk.data")}: {k.free_gib === null || k.total_gib === null ? t("mon.diskUnavailable") : t("mon.diskFree", { free: k.free_gib.toFixed(1), total: k.total_gib.toFixed(1) })}</p>)}
+      </div>
+    </div>}
+  </Card>;
 }
 
 // ResourcesCard shows each limited resource with its live usage and changes its limit. A value above
