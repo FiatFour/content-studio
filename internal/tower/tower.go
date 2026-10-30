@@ -356,6 +356,7 @@ func Derive(in Input) Tower {
 	today := []EpisodeStatus{}
 	var active *EpisodeStatus
 	var activeAt time.Time
+	activeTier := 0
 	for _, r := range in.Runs {
 		isLive := live(r, awaiting)
 		touched := !r.CreatedAt.Before(in.TodayStart)
@@ -370,15 +371,12 @@ func Derive(in Input) Tower {
 		r.Jobs = sorted(r.Jobs)
 		es := episodeStatus(r, isLive, awaiting[r.EpisodeID])
 		today = append(today, es)
-		if r.State != jobs.RunRunning {
-			continue
-		}
-		for _, j := range r.Jobs {
-			if j.State == jobs.Running && (active == nil || j.UpdatedAt.After(activeAt)) {
-				e := es
-				e.Pipeline = pipeline(r, awaiting[r.EpisodeID])
-				active, activeAt = &e, j.UpdatedAt
-			}
+		// The pipeline panel shows one episode: one with a running job first (tier 2); otherwise a failed
+		// run or a run waiting on a resource or the owner (tier 1), so a red or amber floor is explained.
+		if tier, at := activeCandidate(r); tier > activeTier || (tier > 0 && tier == activeTier && at.After(activeAt)) {
+			e := es
+			e.Pipeline = pipeline(r, awaiting[r.EpisodeID])
+			active, activeAt, activeTier = &e, at, tier
 		}
 	}
 	sort.Slice(today, func(i, k int) bool { return today[i].ID < today[k].ID })
@@ -395,6 +393,35 @@ func Derive(in Input) Tower {
 			Version: c.Version, SHA256: c.SHA256, CreatedAt: c.CreatedAt}
 	}
 	return t
+}
+
+// activeCandidate says whether a run can be the tower's active episode and when it last moved. Tier 2:
+// a running run with a running job. Tier 1: a failed run, or a running run with a waiting job (the
+// latest such job). Tier 0: not a candidate. Nothing here guesses: it reads run and job states only.
+func activeCandidate(r Run) (int, time.Time) {
+	var runningAt, openAt time.Time
+	var running, open bool
+	for _, j := range r.Jobs {
+		switch j.State {
+		case jobs.Running:
+			if !running || j.UpdatedAt.After(runningAt) {
+				running, runningAt = true, j.UpdatedAt
+			}
+		case jobs.Failed, jobs.WaitingForResource, jobs.WaitingForHuman, jobs.RetryScheduled:
+			if !open || j.UpdatedAt.After(openAt) {
+				open, openAt = true, j.UpdatedAt
+			}
+		}
+	}
+	switch {
+	case r.State == jobs.RunRunning && running:
+		return 2, runningAt
+	case r.State == jobs.RunFailed && open:
+		return 1, openAt
+	case r.State == jobs.RunRunning && open:
+		return 1, openAt
+	}
+	return 0, time.Time{}
 }
 
 func deriveWorkFloor(f *Floor, def FloorDef, liveRuns []Run, completed map[string]int) {

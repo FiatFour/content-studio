@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { Component, lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { api, ApiError, setUnauthorizedHandler, type AuthStatus, type System } from "./api";
 import { usePoll } from "./hooks";
 import { I18nProvider, useI18n, type Lang } from "./i18n";
@@ -12,13 +12,31 @@ import { ArtifactCompare, ArtifactHistory } from "./pages/History";
 import { LoginScreen } from "./pages/Login";
 import { Security } from "./pages/Security";
 import { Providers } from "./pages/Providers";
-import { TowerPage } from "./pages/Tower";
+import { parseHash } from "./route";
 import { LangSwitch } from "./ui";
 
 function useHash(): string[] {
   const [h, setH] = useState(location.hash);
   useEffect(() => { const f = () => setH(location.hash); addEventListener("hashchange", f); return () => removeEventListener("hashchange", f); }, []);
-  return h.replace(/^#\/?/, "").split("/").filter(Boolean);
+  return parseHash(h);
+}
+
+// The tower is optional (M4): its code and CSS load only when #/tower is opened, and a failure to load or
+// render it is contained here so no other page, the shell, its polling or sign-in is affected.
+const TowerPage = lazy(() => import("./pages/Tower").then((m) => ({ default: m.TowerPage })));
+
+class Contain extends Component<{ fallback: (retry: () => void) => ReactNode; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(e: unknown) { console.error("tower page failed", e instanceof Error ? e.message : "unknown error"); }
+  render() { return this.state.failed ? this.props.fallback(() => this.setState({ failed: false })) : this.props.children; }
+}
+
+function TowerRoute() {
+  const { t } = useI18n();
+  return <Contain fallback={(retry) => <div role="alert" className="card border-red text-red"><strong>{t("tower.chunkError")}</strong> <button className="btn ml-2" onClick={retry}>{t("tower.reload")}</button></div>}>
+    <Suspense fallback={<div role="status" className="card muted">{t("app.loading")}</div>}><TowerPage /></Suspense>
+  </Contain>;
 }
 
 // Before sign-in the backend refuses /settings, so the language choice lives in this browser until then.
@@ -118,7 +136,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
         {page === "canon" && (route[1] ? <CanonProposalPage id={Number(route[1])} /> : <CanonProposals />)}
         {page === "security" && <Security />}
         {page === "providers" && <Providers />}
-        {page === "tower" && <TowerPage />}
+        {page === "tower" && <TowerRoute />}
         {page === "history" && route[1] && <ArtifactHistory episodeId={Number(route[1])} />}
         {page === "compare" && route[1] && route[2] && <ArtifactCompare a={Number(route[1])} b={Number(route[2])} />}
         {page === "review" &&(route[1] ? <ReviewPage id={Number(route[1])} /> : <ReviewQueue />)}
