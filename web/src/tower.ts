@@ -124,3 +124,42 @@ export function pipelineSteps(ep: EpisodeStatus | null): Step[] {
   return p.map((s, i) => ({ stage: s.stage, agent: s.agent, state: s.state, progress: s.progress, last: i === p.length - 1 }));
 }
 export const reviewHref = (c: Pick<Clip, "artifact_id">): string => `#/review/${c.artifact_id}`;
+
+// ---- motion (T4). Motion is a function of the payload and two browser facts, nothing else. ----
+
+// Floors with a conveyor. A crate stands on one only when the payload puts an episode on that floor.
+export const CONVEYOR_FLOORS = ["1F", "2F", "3F", "4F", "5F", "6F"] as const;
+export type CrateMotion = { code: string; episode: EpisodeRef; index: number; moving: boolean };
+export type TowerMotion = {
+  enabled: boolean; // false when disconnected or reduced motion is asked for: nothing animates, state still shows by glyph and colour
+  lamps: string[]; // floor codes whose lamp pulses (state `active` only)
+  crates: CrateMotion[]; // one per episode the payload places on a conveyor floor; slides only while that floor is `active`
+  car: { floor: string; travel: boolean }; // parked floor (G when nothing runs); travel = ease between floors when it changes
+};
+
+// motionOf turns a payload into motion flags. Idle, done, failed, waiting and not_implemented floors never animate:
+// a failed floor keeps its static cross, a waiting floor its pause glyph.
+export function motionOf(t: Pick<TowerState, "floors" | "active_episode">, o: { stale: boolean; reduced: boolean }): TowerMotion {
+  const enabled = !o.stale && !o.reduced;
+  const active = t.floors.filter((f) => f.state === "active").map((f) => f.code);
+  const crates: CrateMotion[] = [];
+  for (const f of t.floors) {
+    if (!(CONVEYOR_FLOORS as readonly string[]).includes(f.code)) continue;
+    f.episodes.forEach((episode, index) => crates.push({ code: f.code, episode, index, moving: enabled && f.state === "active" }));
+  }
+  const floor = carFloor(t) ?? "G";
+  return { enabled, lamps: enabled ? active : [], crates, car: { floor, travel: enabled && active.length > 0 } };
+}
+
+export const POLL_ACTIVE_MS = 3000;
+export const POLL_IDLE_MS = 15000;
+export const POLL_RETRY_MS = 5000;
+// pollInterval picks the refresh interval: null (paused) while the tab is hidden, fast while a run is active,
+// slow when idle, moderate while the backend is unreachable. No data yet: fast.
+export function pollInterval(t: Pick<TowerState, "floors" | "active_episode"> | null, o: { hidden: boolean; stale: boolean }): number | null {
+  if (o.hidden) return null;
+  if (o.stale) return POLL_RETRY_MS;
+  if (!t) return POLL_ACTIVE_MS;
+  const running = t.floors.some((f) => f.state === "active") || t.active_episode?.run_state === "running";
+  return running ? POLL_ACTIVE_MS : POLL_IDLE_MS;
+}

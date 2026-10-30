@@ -1,9 +1,9 @@
-import { useState } from "react";
-import { usePoll } from "../hooks";
+import { useEffect, useRef, useState } from "react";
+import { useDocumentHidden, usePoll, useReducedMotion } from "../hooks";
 import { useI18n, type Key } from "../i18n";
 import { Tower as TowerScene, LampGlyph } from "../TowerScene";
 import { AgentDetail, PipelinePanel, ProgressTracker, RightColumn } from "../TowerPanels";
-import { carFloor, type FloorState, type TowerPayload } from "../tower";
+import { carFloor, motionOf, pollInterval, type FloorState, type TowerPayload } from "../tower";
 import { Card, fmtTime } from "../ui";
 
 const LEGEND: FloorState[] = ["done", "active", "idle", "waiting", "failed", "not_implemented"];
@@ -12,9 +12,19 @@ const LEGEND: FloorState[] = ["done", "active", "idle", "waiting", "failed", "no
 // depends on it. A failed or unreachable backend freezes the scene on the last real payload (or shows none).
 export function TowerPage() {
   const { t, lang } = useI18n();
-  const q = usePoll<TowerPayload>("/tower", 3000);
+  const hidden = useDocumentHidden();
+  const reduced = useReducedMotion();
+  const [seen, setSeen] = useState<TowerPayload | null>(null); // last payload and link state, to choose the next interval
+  const [down, setDown] = useState(false);
+  const q = usePoll<TowerPayload>("/tower", pollInterval(seen?.tower ?? null, { hidden, stale: down }));
   const [selected, setSelected] = useState<string | null>(null);
   const stale = q.disconnected || q.error !== null;
+  const motion = motionOf(q.data?.tower ?? { floors: [], active_episode: null }, { stale, reduced });
+  useEffect(() => { setSeen(q.data); }, [q.data]);
+  useEffect(() => { setDown(stale); }, [stale]);
+  const wasHidden = useRef(hidden);
+  const { reload } = q;
+  useEffect(() => { if (wasHidden.current && !hidden) reload(); wasHidden.current = hidden; }, [hidden]); // eslint-disable-line react-hooks/exhaustive-deps
   const select = (c: string) => setSelected((s) => (s === c ? null : c));
   const car = q.data ? carFloor(q.data.tower) : null;
 
@@ -25,9 +35,9 @@ export function TowerPage() {
     {!q.data && !q.error && <div role="status" className="card muted">{t("app.loading")}</div>}
     {q.data && <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
       <div className="flex min-w-0 flex-col gap-4">
-        <Card className="flex overflow-x-auto !p-2">
-          <ProgressTracker floors={q.data.tower.floors} frozen={stale} />
-          <TowerScene tower={q.data.tower} frozen={stale} selected={selected} onSelect={select} />
+        <Card className={`flex overflow-x-auto !p-2 ${hidden ? "tower-paused" : ""}`}>
+          <ProgressTracker floors={q.data.tower.floors} frozen={stale} motion={motion.enabled} />
+          <TowerScene tower={q.data.tower} motion={motion} frozen={stale} selected={selected} onSelect={select} />
         </Card>
         <div className={stale ? "tower-frozen" : ""} data-frozen={stale || undefined}>
           <AgentDetail floor={q.data.tower.floors.find((f) => f.code === selected) ?? null} onClear={() => setSelected(null)} />
