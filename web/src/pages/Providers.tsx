@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, ApiError, type Notifications, type NotifTestResult } from "../api";
+import { api, ApiError, type Notifications, type NotifTestResult, type Policies, type Resource } from "../api";
 import { usePoll } from "../hooks";
 import { dictionaries, useI18n, type Key } from "../i18n";
 import { Card, fmtTime } from "../ui";
@@ -12,8 +12,85 @@ export function Providers() {
     <Card><h1 className="font-display text-2xl font-extrabold">{t("providers.title")}</h1>
       <p className="muted">{t("providers.localOnly")}</p></Card>
     <Card title={t("providers.budget")}><p className="muted">{t("app.notImplemented")} · {t("providers.budgetHelp")}</p></Card>
+    <ResourcesCard />
+    <PoliciesCard />
     <NotificationsCard />
   </div>;
+}
+
+// ResourcesCard shows each limited resource with its live usage and changes its limit. A value above
+// the safe maximum (GPU: 1) needs a second, explicit confirmation, which the API also requires.
+function ResourcesCard() {
+  const { t } = useI18n();
+  const r = usePoll<{ resources: Resource[] }>("/resources", 5000);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; key: Key; vars?: Record<string, string | number> } | null>(null);
+
+  const apply = async (res: Resource, n: number) => {
+    setBusy(true); setMsg(null);
+    try {
+      await api(`/resources/${encodeURIComponent(res.name)}`, { method: "PUT", body: { max_concurrent: n, confirm_unsafe: n > res.safe_max } });
+      setConfirming(null); setDraft((d) => { const { [res.name]: _gone, ...rest } = d; return rest; });
+      setMsg({ ok: true, key: "res.saved", vars: { name: res.name, n } }); r.reload();
+    } catch { setMsg({ ok: false, key: "res.saveFailed" }); } finally { setBusy(false); }
+  };
+
+  return <Card title={t("res.title")}>
+    <p className="muted mb-3">{t("res.help")}</p>
+    {!r.data ? <p className={r.error ? "text-red" : "muted"} role={r.error ? "alert" : undefined}>{r.error ? t("res.loadFailed") : t("app.loading")}</p> : <ul className="flex flex-col gap-3">
+      {r.data.resources.map((res) => {
+        const value = draft[res.name] ?? String(res.max_concurrent);
+        const n = Number(value);
+        const valid = Number.isInteger(n) && n >= 1 && n <= res.max;
+        const unsafe = valid && n > res.safe_max;
+        return <li key={res.name} className="inner flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="mono mr-auto font-semibold">{res.name}</span>
+            <span className="mono text-sm">{t("res.current")}: {res.max_concurrent}</span>
+            <span className="mono text-sm">{t("res.running")}: {res.running}</span>
+            <span className="mono text-sm">{t("res.waiting")}: {res.waiting}</span>
+          </div>
+          <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => { e.preventDefault(); if (!valid || n === res.max_concurrent) return; if (unsafe) setConfirming(res.name); else void apply(res, n); }}>
+            <div><label htmlFor={`lim-${res.name}`} className="mb-1 block text-sm">{t("res.limit", { max: res.max })}</label>
+              <input id={`lim-${res.name}`} className="field !w-28" type="number" min={1} max={res.max} step={1} value={value} disabled={busy}
+                onChange={(e) => { setConfirming(null); setMsg(null); setDraft({ ...draft, [res.name]: e.target.value }); }} /></div>
+            <button className="btn btn-primary" disabled={busy || !valid || n === res.max_concurrent}>{t("res.save")}</button>
+            {!valid && <span role="alert" className="text-sm text-red">{t("res.invalid", { max: res.max })}</span>}
+          </form>
+          {confirming === res.name && unsafe && <div role="alertdialog" aria-labelledby={`warn-${res.name}`} className="rounded-xl border-2 border-amber p-3">
+            <p id={`warn-${res.name}`} className="font-semibold text-amber">{t("res.warnTitle")}</p>
+            <p className="mb-3">{t("res.warn", { n })}</p>
+            <div className="flex flex-wrap gap-2">
+              <button className="btn btn-danger" disabled={busy} onClick={() => void apply(res, n)}>{busy ? t("res.saving") : t("res.confirm", { n })}</button>
+              <button className="btn" disabled={busy} onClick={() => setConfirming(null)}>{t("app.cancel")}</button>
+            </div>
+          </div>}
+          <p className="muted text-sm">{t("res.lowerHelp")}</p>
+        </li>;
+      })}
+    </ul>}
+    {msg && <p role={msg.ok ? "status" : "alert"} className={`mt-3 ${msg.ok ? "text-green" : "text-red"}`}>{t(msg.key, msg.vars)}</p>}
+  </Card>;
+}
+
+// PoliciesCard is read-only: every task runs LOCAL_ONLY and changing that is not built (needs the budget, #19).
+function PoliciesCard() {
+  const { t } = useI18n();
+  const p = usePoll<Policies>("/policies", 30000);
+  return <Card title={t("pol.title")}>
+    {!p.data ? <p className={p.error ? "text-red" : "muted"} role={p.error ? "alert" : undefined}>{p.error ? t("pol.loadFailed") : t("app.loading")}</p> : <div className="flex flex-col gap-3">
+      <p className={`mono inline-flex items-center gap-2 ${p.data.cloud_enabled ? "text-amber" : "text-green"}`}>
+        <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-current" />{p.data.cloud_enabled ? t("pol.cloudOn") : t("pol.cloudOff")}</p>
+      <div className="overflow-x-auto"><table className="w-full text-left text-sm">
+        <thead><tr className="muted"><th className="p-2">{t("pol.task")}</th><th className="p-2">{t("pol.capability")}</th><th className="p-2">{t("pol.policy")}</th></tr></thead>
+        <tbody>{p.data.tasks.map((x) => <tr key={x.task} className="border-t border-line">
+          <td className="mono p-2">{x.task}</td><td className="mono p-2">{x.capability}</td><td className="mono p-2">{x.policy}</td></tr>)}</tbody>
+      </table></div>
+      <p className="muted"><span className="mono rounded border border-line px-1.5 text-sm">{t("app.notImplemented")}</span> {t("pol.changeHelp")}</p>
+    </div>}
+  </Card>;
 }
 
 type TestState = { kind: "result"; r: NotifTestResult } | { kind: "notConfigured" } | { kind: "failed" };

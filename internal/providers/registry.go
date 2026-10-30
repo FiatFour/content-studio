@@ -206,3 +206,20 @@ func (r *Registry) resolve(task Task, policy Policy) (any, error) {
 	}
 	return nil, fmt.Errorf("%w: %s", ErrBudgetNotReady, task)
 }
+
+// TaskInfo pairs a task with the capability it needs.
+type TaskInfo struct {
+	Task       Task
+	Capability Capability
+}
+
+// Tasks lists every task with the capability it needs, in pipeline order. It is read-only data for
+// the settings screen; every task runs under DefaultPolicy (nothing makes it configurable yet).
+func Tasks() []TaskInfo {
+	return []TaskInfo{
+		{TaskScript, taskCapability[TaskScript]},
+		{TaskTTS, taskCapability[TaskTTS]},
+		{TaskImages, taskCapability[TaskImages]},
+		{TaskSubtitles, taskCapability[TaskSubtitles]},
+	}
+}

@@ -10,7 +10,7 @@ Implemented in `internal/providers/registry.go`:
 - A `cloud enabled` setting (`STUDIO_CLOUD_ENABLED`, default off, backend env only). A cloud-allowing policy is refused when it is off. When it is on, the request is still refused with "budget check not implemented", so the path fails closed.
 - Tests: a counting cloud fake (`fake.CloudSpy`) is never called across every stage or resolution path (`internal/providers/registry_test.go`, `internal/pipeline/provider_policy_test.go`).
 
-Not implemented: budget and reservations, the kill switch, any real cloud adapter or pricing, provider keys, health and usage metrics, per-task policy configuration (stages always use `LOCAL_ONLY`), the settings UI, and a "local failed, try cloud" fallback at run time. Cloud work stays blocked on D10 (issues #19-#21).
+Not implemented: budget and reservations, the kill switch, any real cloud adapter or pricing, provider keys, health and usage metrics, per-task policy configuration (stages always use `LOCAL_ONLY`; `GET /api/policies` and the screen list them read-only and show "Not implemented" for changing them), and a "local failed, try cloud" fallback at run time. Cloud work stays blocked on D10 (issues #19-#21).
 
 ## Providers
 A provider is registered with:

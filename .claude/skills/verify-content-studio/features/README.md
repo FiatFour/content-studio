@@ -30,4 +30,5 @@ Maintained source for verifying the user-facing behavior of the studio web UI. R
 - [Create an episode](./create-episode.md): form to episode page to queued first stage, with the stored row checked. Flow `create-episode`.
 - [Passkey sign-in](./auth.md): enrollment, sign in/out, Security page, expired session, with a CDP virtual authenticator. Flow `auth` (needs a fresh instance).
 - [Discord notifications](./notifications.md): Providers & budget screen, toggles, test message, masked suffix. Flow `notifications`.
+- Resource limits and task policies (same screen `#/providers`): flow `resources` checks the confirm step above limit 1, persistence, audit rows and the read-only policy table.
 - [Review, approve and export](./review-and-export.md): NOT yet driven by any flow; needs a video that passed QA.
