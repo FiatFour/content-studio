@@ -34,7 +34,9 @@ func (p Plan) stages(kind string) []string {
 }
 
 type Job struct {
-	ID          int64
+	ID int64
+	// Profile is the content profile of the job's run (workflow_runs.profile).
+	Profile     string
 	RunID       int64
 	EpisodeID   int64
 	ProjectID   int64
@@ -53,8 +55,12 @@ type Job struct {
 }
 
 type Queue struct {
-	DB          *pgxpool.Pool
-	Plan        Plan
+	DB *pgxpool.Pool
+	// Plan is the single plan of a queue built for one profile (the original, still supported form).
+	Plan Plan
+	// Plans, when set, replaces Plan: each run uses the plan of its own profile, found by the id stored
+	// in workflow_runs.profile. A profile with no entry is an error, never a fallback to another plan.
+	Plans       map[string]Plan
 	MaxAttempts int
 	// Owner names this worker on the leases it takes. It must be unique per live worker process.
 	Owner string
@@ -86,6 +92,47 @@ func (q *Queue) owner() string {
 	return "worker"
 }
 
+// ErrUnknownProfile means a run names a content profile this queue has no plan for.
+var ErrUnknownProfile = errors.New("unknown content profile")
+
+// planFor returns the plan a run of this profile follows. With Plans set the profile must be listed;
+// without it the queue has the one Plan and every run uses it.
+func (q *Queue) planFor(profile string) (Plan, error) {
+	if q.Plans == nil {
+		return q.Plan, nil
+	}
+	p, ok := q.Plans[profile]
+	if !ok {
+		return Plan{}, fmt.Errorf("%w %q", ErrUnknownProfile, profile)
+	}
+	return p, nil
+}
+
+// HasPlan reports whether this queue can run the profile: it is listed in Plans, or (single-plan form)
+// it is the Plan's profile.
+func (q *Queue) HasPlan(profile string) bool {
+	if q.Plans != nil {
+		_, ok := q.Plans[profile]
+		return ok
+	}
+	return q.Plan.Profile == profile
+}
+
+// PlanOf returns the plan of a run's profile (the worker uses it to refuse a run it has no plan for).
+func (q *Queue) PlanOf(profile string) (Plan, error) { return q.planFor(profile) }
+
+// episodePlan finds the plan for an episode through its project's profile.
+func (q *Queue) episodePlan(ctx context.Context, episodeID int64) (Plan, error) {
+	if q.Plans == nil {
+		return q.Plan, nil
+	}
+	var profile string
+	if err := q.DB.QueryRow(ctx, `SELECT p.profile FROM episodes e JOIN projects p ON p.id = e.project_id WHERE e.id = $1`, episodeID).Scan(&profile); err != nil {
+		return Plan{}, err
+	}
+	return q.planFor(profile)
+}
+
 var ErrNoJob = errors.New("no job ready")
 
 // ErrLeaseLost means the job is no longer this worker's: its lease expired and it was recovered
@@ -106,17 +153,21 @@ func conflictf(format string, args ...any) error {
 // "rerender" run has the run whose inputs it reuses. Rewrite runs are created only by the queue itself
 // (startRewrite), because they need feedback; the database rejects any other combination.
 func (q *Queue) CreateRun(ctx context.Context, episodeID int64, kind string, parentRunID *int64) (int64, error) {
-	stages := q.Plan.stages(kind)
+	plan, err := q.episodePlan(ctx, episodeID)
+	if err != nil {
+		return 0, err
+	}
+	stages := plan.stages(kind)
 	if len(stages) == 0 {
 		return 0, fmt.Errorf("unknown run kind %q", kind)
 	}
 	var runID int64
-	err := pgx.BeginFunc(ctx, q.DB, func(tx pgx.Tx) error {
+	err = pgx.BeginFunc(ctx, q.DB, func(tx pgx.Tx) error {
 		if err := tx.QueryRow(ctx, `INSERT INTO workflow_runs (episode_id, profile, kind, parent_run_id, state)
-			VALUES ($1, $2, $3, $4, $5) RETURNING id`, episodeID, q.Plan.Profile, kind, parentRunID, RunRunning).Scan(&runID); err != nil {
+			VALUES ($1, $2, $3, $4, $5) RETURNING id`, episodeID, plan.Profile, kind, parentRunID, RunRunning).Scan(&runID); err != nil {
 			return err
 		}
-		return insertJob(ctx, tx, runID, stages[0], 0, q.Plan.resource(stages[0]))
+		return insertJob(ctx, tx, runID, stages[0], 0, plan.resource(stages[0]))
 	})
 	return runID, err
 }
@@ -153,7 +204,7 @@ func (q *Queue) Claim(ctx context.Context) (*Job, error) {
 			Queued, WaitingForResource, Running); err != nil {
 			return err
 		}
-		rows, err := tx.Query(ctx, `SELECT j.id, j.run_id, r.episode_id, e.project_id, r.kind, r.parent_run_id, j.stage, j.seq, j.state, j.attempt_count, j.attempt_base, coalesce(j.resource, '')
+		rows, err := tx.Query(ctx, `SELECT j.id, j.run_id, r.episode_id, e.project_id, r.kind, r.parent_run_id, j.stage, j.seq, j.state, j.attempt_count, j.attempt_base, coalesce(j.resource, ''), r.profile
 			FROM jobs j JOIN workflow_runs r ON r.id = j.run_id JOIN episodes e ON e.id = r.episode_id
 			WHERE j.state = $1 ORDER BY j.id LIMIT $2 FOR UPDATE OF j SKIP LOCKED`, Queued, claimScanLimit)
 		if err != nil {
@@ -166,7 +217,7 @@ func (q *Queue) Claim(ctx context.Context) (*Job, error) {
 		var cands []candidate
 		for rows.Next() {
 			var c candidate
-			if err := rows.Scan(&c.ID, &c.RunID, &c.EpisodeID, &c.ProjectID, &c.RunKind, &c.ParentRunID, &c.Stage, &c.Seq, &c.State, &c.Attempt, &c.AttemptBase, &c.resource); err != nil {
+			if err := rows.Scan(&c.ID, &c.RunID, &c.EpisodeID, &c.ProjectID, &c.RunKind, &c.ParentRunID, &c.Stage, &c.Seq, &c.State, &c.Attempt, &c.AttemptBase, &c.resource, &c.Profile); err != nil {
 				rows.Close()
 				return err
 			}
@@ -307,9 +358,13 @@ func (q *Queue) complete(ctx context.Context, j *Job, persist func(pgx.Tx) error
 		if err := finishAttempt(ctx, tx, j, Completed, "", ""); err != nil {
 			return err
 		}
-		stages := q.Plan.stages(j.RunKind)
+		plan, err := q.planFor(j.Profile)
+		if err != nil {
+			return err
+		}
+		stages := plan.stages(j.RunKind)
 		if j.Seq+1 < len(stages) {
-			return insertJob(ctx, tx, j.RunID, stages[j.Seq+1], j.Seq+1, q.Plan.resource(stages[j.Seq+1]))
+			return insertJob(ctx, tx, j.RunID, stages[j.Seq+1], j.Seq+1, plan.resource(stages[j.Seq+1]))
 		}
 		_, err = tx.Exec(ctx, `UPDATE workflow_runs SET state = $1, finished_at = now() WHERE id = $2`, RunReadyForReview, j.RunID)
 		return err
@@ -476,14 +531,22 @@ func rewriteDepth(ctx context.Context, tx pgx.Tx, runID int64) (int, error) {
 // startRewrite queues one new run for the same episode whose scriptwriter sees feedback.
 // It runs in the same transaction that failed the old run, so a crash cannot leave one without the other.
 func (q *Queue) startRewrite(ctx context.Context, tx pgx.Tx, runID int64, feedback string) (int64, error) {
+	var profile string
+	if err := tx.QueryRow(ctx, `SELECT profile FROM workflow_runs WHERE id = $1`, runID).Scan(&profile); err != nil {
+		return 0, err
+	}
+	plan, err := q.planFor(profile)
+	if err != nil {
+		return 0, err
+	}
 	var newID int64
 	if err := tx.QueryRow(ctx, `INSERT INTO workflow_runs (episode_id, profile, kind, parent_run_id, state, feedback)
 		SELECT episode_id, profile, 'rewrite', id, $2, $3 FROM workflow_runs WHERE id = $1 RETURNING id`,
 		runID, RunRunning, feedback).Scan(&newID); err != nil {
 		return 0, err
 	}
-	first := q.Plan.stages("rewrite")[0]
-	return newID, insertJob(ctx, tx, newID, first, 0, q.Plan.resource(first))
+	first := plan.stages("rewrite")[0]
+	return newID, insertJob(ctx, tx, newID, first, 0, plan.resource(first))
 }
 
 // RecoverExpired takes back every running job whose lease has expired, because its worker died or

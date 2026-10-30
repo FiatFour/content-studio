@@ -35,7 +35,7 @@ func newShortsMedia(t *testing.T, llmResponses ...string) *shortsMedia {
 	p, _ := pipeline.Profiles.Get(pipeline.KnowledgeShortsID)
 	spec := p.Spec()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	q := &jobs.Queue{DB: h.db, Plan: jobs.Plan{Profile: spec.ID, Full: spec.PlannedStages, Resources: spec.Resources}, MaxAttempts: 2,
+	q := &jobs.Queue{DB: h.db, Plan: jobs.Plan{Profile: spec.ID, Full: spec.Stages["full"], Resources: spec.Resources}, MaxAttempts: 2,
 		Delay: func(*jobs.StageError, int) time.Duration { return 0 }}
 	m := &shortsMedia{shortsHarness: h, images: &fake.Images{}, voice: &fake.Voice{SecondsPerRune: 0.06}}
 	reg := providers.NewRegistry(false)
@@ -233,22 +233,22 @@ func TestKnowledgeShortsListsOnlyTheFirstSourcesOnTheCard(t *testing.T) {
 	}
 }
 
-// T5 does not make the profile runnable: the API still answers 501 (see the api tests) and the
-// profile still has no production stage list until T6 adds qa.
-func TestKnowledgeShortsMediaStagesDoNotMakeItRunnable(t *testing.T) {
+// T7 edit: this asserted the profile was NOT runnable (T5/T6). It is runnable now: every stage of
+// its production list has an implementation, and a rerender is render then qa.
+func TestKnowledgeShortsStagesAreImplementedAndRunnable(t *testing.T) {
 	p, _ := pipeline.Profiles.Get(pipeline.KnowledgeShortsID)
 	spec := p.Spec()
-	if spec.Runnable() || len(spec.Plan().Full) != 0 || len(spec.Plan().Rerender) != 0 {
-		t.Fatal("knowledge_shorts must stay unrunnable until T6")
+	if !spec.Runnable() || len(spec.Plan().Full) != 6 || len(spec.Plan().Rerender) != 2 {
+		t.Fatal("knowledge_shorts must be runnable with a full and a rerender list")
 	}
 	impl := p.Stages(&pipeline.Deps{})
-	for _, st := range spec.PlannedStages {
+	for _, st := range spec.Stages["full"] {
 		if impl[st] == nil {
 			t.Errorf("planned stage %q has no implementation", st)
 		}
 	}
 	// T6 edit: this used to assert qa was absent; the shared qa stage is now planned and implemented.
-	if impl["qa"] == nil || spec.PlannedStages[len(spec.PlannedStages)-1] != "qa" {
+	if impl["qa"] == nil || spec.Stages["full"][len(spec.Stages["full"])-1] != "qa" {
 		t.Error("qa must be the last planned stage and have an implementation")
 	}
 	for st, res := range map[string]string{"script": "gpu", "tts": "gpu", "images": "gpu"} {

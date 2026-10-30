@@ -73,8 +73,8 @@ func (s *Server) loadTowerInput(ctx context.Context) (tower.Input, error) {
 		return in, err
 	}
 
-	rows, err = s.DB.Query(ctx, `SELECT r.id, r.episode_id, e.number, e.title, r.state, r.created_at, r.kind FROM (
-			SELECT DISTINCT ON (episode_id) id, episode_id, state, created_at, kind FROM workflow_runs ORDER BY episode_id, id DESC) r
+	rows, err = s.DB.Query(ctx, `SELECT r.id, r.episode_id, e.number, e.title, r.state, r.created_at, r.kind, r.profile FROM (
+			SELECT DISTINCT ON (episode_id) id, episode_id, state, created_at, kind, profile FROM workflow_runs ORDER BY episode_id, id DESC) r
 		JOIN episodes e ON e.id = r.episode_id
 		WHERE r.state IN ('running', 'failed', 'ready_for_review') OR r.created_at >= $1
 			OR EXISTS (SELECT 1 FROM jobs j WHERE j.run_id = r.id AND j.updated_at >= $1)`, in.TodayStart)
@@ -83,13 +83,16 @@ func (s *Server) loadTowerInput(ctx context.Context) (tower.Input, error) {
 	}
 	if in.Runs, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (tower.Run, error) {
 		var t tower.Run
-		var state, kind string
-		err := r.Scan(&t.ID, &t.EpisodeID, &t.Number, &t.Title, &state, &t.CreatedAt, &kind)
+		var state, kind, profile string
+		err := r.Scan(&t.ID, &t.EpisodeID, &t.Number, &t.Title, &state, &t.CreatedAt, &kind, &profile)
 		t.State = jobs.RunState(state)
-		// Same choice as Plan.stages: a rerender has its own plan, every other kind runs the full one.
-		t.Stages = s.Queue.Plan.Full
-		if kind == "rerender" {
-			t.Stages = s.Queue.Plan.Rerender
+		// The run's own profile's plan; a rerender has its own list, every other kind runs the full one.
+		// A profile the queue has no plan for leaves the list empty, so the tower shows the jobs that exist.
+		if plan, perr := s.Queue.PlanOf(profile); perr == nil {
+			t.Stages = plan.Full
+			if kind == "rerender" {
+				t.Stages = plan.Rerender
+			}
 		}
 		return t, err
 	}); err != nil {

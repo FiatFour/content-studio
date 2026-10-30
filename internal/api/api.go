@@ -91,6 +91,7 @@ func (s *Server) Echo() *echo.Echo {
 	a.POST("/canon/proposals/:id/reject", s.decideCanonProposal(false))
 	a.PUT("/episodes/:id/summary", s.putSummary)
 	a.PUT("/episodes/:id/in-story-date", s.putInStoryDate)
+	a.POST("/episodes/:id/run", s.startRun)
 	a.POST("/episodes/:id/rerender", s.rerender)
 	a.POST("/episodes/:id/sources", s.createSource)
 	a.POST("/episodes/:id/sources/:source/versions", s.versionSource)

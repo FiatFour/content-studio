@@ -65,7 +65,7 @@ func run(log *slog.Logger) error {
 	if cfg.LeaseSeconds < 3 {
 		return fmt.Errorf("STUDIO_LEASE_SECONDS must be at least 3")
 	}
-	q := &jobs.Queue{DB: db, Plan: pipeline.FictionalSeries, MaxAttempts: cfg.MaxAttempts,
+	q := &jobs.Queue{DB: db, Plans: pipeline.RunnablePlans(), MaxAttempts: cfg.MaxAttempts,
 		Owner: workerID(), LeaseTTL: time.Duration(cfg.LeaseSeconds) * time.Second, Log: log}
 	deps := &pipeline.Deps{
 		DB: db, Store: &artifacts.Store{Root: cfg.StorageRoot}, Queue: q,
@@ -87,7 +87,7 @@ func run(log *slog.Logger) error {
 		ns.Notifier, ns.Suffix = d, d.Suffix()
 	}
 	go ns.Run(ctx)
-	w := &jobs.Worker{Queue: q, Stages: deps.Stages(), Log: log, PollInterval: cfg.PollInterval}
+	w := &jobs.Worker{Queue: q, ProfileStages: deps.RunnableStages(), Log: log, PollInterval: cfg.PollInterval}
 	log.Info("worker started", "llm", cfg.LLMModel, "checkpoint", cfg.ImageCheckpoint)
 	return w.Run(ctx)
 }

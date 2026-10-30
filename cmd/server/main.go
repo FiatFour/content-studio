@@ -106,7 +106,7 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	srv := &api.Server{
-		DB: db, Queue: &jobs.Queue{DB: db, Plan: pipeline.FictionalSeries, MaxAttempts: cfg.MaxAttempts}, Store: st,
+		DB: db, Queue: &jobs.Queue{DB: db, Plans: pipeline.RunnablePlans(), MaxAttempts: cfg.MaxAttempts}, Store: st,
 		Review: &review.Service{DB: db, Store: st, ExportDir: cfg.ExportDir}, WebDir: cfg.WebDir, Log: log,
 		CloudEnabled: cfg.CloudEnabled, ExportDir: cfg.ExportDir,
 		Health: []api.HealthTarget{

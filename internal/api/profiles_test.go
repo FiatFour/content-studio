@@ -63,7 +63,10 @@ func TestUnknownProfileIsRejected(t *testing.T) {
 	}
 }
 
-func TestKnowledgeShortsValidatesItsRangeThenIsNotImplemented(t *testing.T) {
+// T7 edit: this is the single-plan queue (Plan: FictionalSeries) every older test builds. It still has no
+// plan for knowledge_shorts, so it must refuse it with 501 and write nothing; the multi-profile server
+// that creates a Shorts episode is covered by TestMultiProfileServer* in multiprofile_test.go.
+func TestSinglePlanQueueRefusesAProfileItHasNoPlanFor(t *testing.T) {
 	ts, db := serverDB(t)
 	for _, secs := range []int{29, 61} {
 		code, body := call(t, ts, "POST", "/api/episodes", "", episodeBody("knowledge_shorts", secs))

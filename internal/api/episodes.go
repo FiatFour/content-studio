@@ -55,21 +55,27 @@ type runDetail struct {
 }
 
 func (s *Server) loadRuns(ctx context.Context, episodeID int64, limit int) ([]runDetail, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, kind, parent_run_id, feedback, state, created_at, finished_at FROM workflow_runs
+	rows, err := s.DB.Query(ctx, `SELECT id, kind, parent_run_id, feedback, state, created_at, finished_at, profile FROM workflow_runs
 		WHERE episode_id = $1 ORDER BY id DESC LIMIT $2`, episodeID, limit)
 	if err != nil {
 		return nil, err
 	}
+	profiles := map[int64]string{}
 	runs, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (runDetail, error) {
 		var d runDetail
-		err := r.Scan(&d.ID, &d.Kind, &d.ParentRunID, &d.Feedback, &d.State, &d.CreatedAt, &d.FinishedAt)
+		var profile string
+		err := r.Scan(&d.ID, &d.Kind, &d.ParentRunID, &d.Feedback, &d.State, &d.CreatedAt, &d.FinishedAt, &profile)
+		profiles[d.ID] = profile
 		return d, err
 	})
 	if err != nil {
 		return nil, err
 	}
 	for i := range runs {
-		runs[i].Stages = pipeline.FictionalSeriesSpec().StagesFor(runs[i].Kind)
+		// The stage list is the run's own profile's; a profile the registry does not know shows none.
+		if p, ok := pipeline.Profiles.Get(profiles[runs[i].ID]); ok {
+			runs[i].Stages = p.Spec().StagesFor(runs[i].Kind)
+		}
 		rows, err := s.DB.Query(ctx, `SELECT id, stage, state, attempt_count, progress_done, progress_total, provider, model, error_class, error_message, wait_reason,
 			started_at, finished_at, updated_at FROM jobs WHERE run_id = $1 ORDER BY seq`, runs[i].ID)
 		if err != nil {
@@ -210,7 +216,7 @@ func (s *Server) createEpisode(c echo.Context) error {
 	}
 	// Refuse before anything is written: a profile without stages, or one this server's queue has no
 	// plan for, gets no episode and no run.
-	if !spec.Runnable() || spec.ID != s.Queue.Plan.Profile {
+	if !spec.Runnable() || !s.Queue.HasPlan(spec.ID) {
 		return fail(http.StatusNotImplemented, "Not implemented: the "+spec.ID+" profile cannot run yet")
 	}
 	ctx := c.Request().Context()
@@ -230,11 +236,55 @@ func (s *Server) createEpisode(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if spec.ID == pipeline.KnowledgeShortsID {
+		// A Shorts script needs sources, and sources are added to an episode that exists, so the run
+		// starts later (POST /api/episodes/:id/run) once the owner has pasted at least one.
+		return c.JSON(http.StatusCreated, map[string]any{"episode_id": episodeID, "run_id": nil})
+	}
 	runID, err := s.Queue.CreateRun(ctx, episodeID, "full", nil)
 	if err != nil {
 		return err
 	}
 	return c.JSON(http.StatusCreated, map[string]int64{"episode_id": episodeID, "run_id": runID})
+}
+
+// startRun queues the first (full) run of an episode that has none yet. Fictional Series episodes get
+// their run when they are created, so this is how a Knowledge Shorts episode starts, after its sources
+// are added. A Shorts episode with no source is refused here and no job is created.
+func (s *Server) startRun(c echo.Context) error {
+	id, err := idParam(c)
+	if err != nil {
+		return err
+	}
+	ctx := c.Request().Context()
+	var profile string
+	if err := s.DB.QueryRow(ctx, `SELECT p.profile FROM episodes e JOIN projects p ON p.id = e.project_id WHERE e.id = $1`, id).Scan(&profile); err != nil {
+		return err
+	}
+	if !s.Queue.HasPlan(profile) {
+		return fail(http.StatusNotImplemented, "Not implemented: the "+profile+" profile cannot run yet")
+	}
+	var runs int
+	if err := s.DB.QueryRow(ctx, `SELECT count(*) FROM workflow_runs WHERE episode_id = $1`, id).Scan(&runs); err != nil {
+		return err
+	}
+	if runs > 0 {
+		return fail(http.StatusConflict, "this episode already has a run; retry or re-render it instead")
+	}
+	if profile == pipeline.KnowledgeShortsID {
+		var sources int
+		if err := s.DB.QueryRow(ctx, `SELECT count(*) FROM artifacts WHERE episode_id = $1 AND type = 'source'`, id).Scan(&sources); err != nil {
+			return err
+		}
+		if sources == 0 {
+			return fail(http.StatusConflict, "add at least one source before running a Knowledge Shorts episode")
+		}
+	}
+	runID, err := s.Queue.CreateRun(ctx, id, "full", nil)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusCreated, map[string]int64{"run_id": runID})
 }
 
 type artifactRow struct {

@@ -25,10 +25,13 @@ type Keyed interface {
 }
 
 type Worker struct {
-	Queue        *Queue
-	Stages       map[string]Stage
-	Log          *slog.Logger
-	PollInterval time.Duration
+	Queue  *Queue
+	Stages map[string]Stage
+	// ProfileStages, when set, replaces Stages: a job runs the implementation of its own run's
+	// profile and stage name. A profile or stage with no entry fails the run, with no fallback.
+	ProfileStages map[string]map[string]Stage
+	Log           *slog.Logger
+	PollInterval  time.Duration
 }
 
 // Run processes jobs one at a time until ctx ends. One worker means one GPU-heavy stage at a time.
@@ -69,7 +72,17 @@ func (w *Worker) RunOne(ctx context.Context) (bool, error) {
 	}
 	log := w.Log.With("job_id", j.ID, "run_id", j.RunID, "stage", j.Stage, "attempt", j.Attempt)
 	log.Info("job state", "state", Running)
-	stage, ok := w.Stages[j.Stage]
+	if w.ProfileStages != nil || w.Queue.Plans != nil {
+		if _, err := w.Queue.PlanOf(j.Profile); err != nil {
+			// A run of a profile this queue has no plan for can never finish; the stored message names no input.
+			return true, w.Queue.Fail(ctx, j, Errorf(ErrUnsupported, err, "unknown content profile"))
+		}
+	}
+	stages := w.Stages
+	if w.ProfileStages != nil {
+		stages = w.ProfileStages[j.Profile]
+	}
+	stage, ok := stages[j.Stage]
 	if !ok {
 		return true, w.Queue.Fail(ctx, j, Errorf(ErrUnsupported, nil, "no implementation for stage %s", j.Stage))
 	}
