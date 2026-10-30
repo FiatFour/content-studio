@@ -103,7 +103,7 @@ export function EpisodeDetail({ id }: { id: number }) {
         <strong>{t("episode.version", { n: v.version })}</strong><StateBadge state={v.validation_status} /><span className="mono text-xs">{v.sha256.slice(0, 12)}</span>
         <span className="muted text-sm">{fmtBytes(v.size_bytes)} · {fmtTime(v.created_at, lang)}</span>
         <span className="mono text-sm">{t(`review.status.${v.decision ?? "none"}` as Key)}</span><a className="btn ml-auto inline-flex items-center no-underline" href={`#/review/${v.id}`}>{t("episode.openReview")}</a></li>)}</ul>}</Card>
-    <Card title={t("episode.artifacts")}>{(arts.data?.artifacts.length ?? 0) === 0 ? <p className="muted">{t("app.na")}</p> :
+    <Card title={<>{t("episode.artifacts")} <a className="ml-3 text-sm" href={`#/history/${id}`}>{t("history.open")}</a></>}>{(arts.data?.artifacts.length ?? 0) === 0 ? <p className="muted">{t("app.na")}</p> :
       <div className="max-h-64 overflow-auto"><table className="w-full text-left mono text-xs"><tbody>{arts.data!.artifacts.map((a) => <tr key={a.id} className="border-t border-line"><td className="py-1">{a.type}{a.item_key ? `/${a.item_key}` : ""}</td><td>v{a.version}</td><td>{a.sha256.slice(0, 12)}</td><td className="muted">{a.model}</td></tr>)}</tbody></table></div>}</Card>
   </div>;
 }

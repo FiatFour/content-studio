@@ -67,6 +67,8 @@ func (s *Server) Echo() *echo.Echo {
 	a.GET("/episodes", s.listEpisodes)
 	a.GET("/episodes/:id", s.getEpisode)
 	a.GET("/runs/:id/artifacts", s.runArtifacts)
+	a.GET("/episodes/:id/artifact-history", s.artifactHistory)
+	a.GET("/artifacts/compare", s.compareArtifacts)
 	a.GET("/artifacts/:id/content", s.artifactContent)
 	a.GET("/videos/:id/review", s.videoReview)
 	a.GET("/characters", s.listCharacters)

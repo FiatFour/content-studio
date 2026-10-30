@@ -7,6 +7,7 @@ import { Episodes } from "./pages/Episodes";
 import { Characters } from "./pages/Characters";
 import { EpisodeDetail } from "./pages/EpisodeDetail";
 import { ReviewPage, ReviewQueue } from "./pages/Review";
+import { ArtifactCompare, ArtifactHistory } from "./pages/History";
 import { LoginScreen } from "./pages/Login";
 import { Security } from "./pages/Security";
 import { Providers } from "./pages/Providers";
@@ -113,7 +114,9 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
         {page === "characters" && <Characters />}
         {page === "security" && <Security />}
         {page === "providers" && <Providers />}
-        {page === "review" && (route[1] ? <ReviewPage id={Number(route[1])} /> : <ReviewQueue />)}
+        {page === "history" && route[1] && <ArtifactHistory episodeId={Number(route[1])} />}
+        {page === "compare" && route[1] && route[2] && <ArtifactCompare a={Number(route[1])} b={Number(route[2])} />}
+        {page === "review" &&(route[1] ? <ReviewPage id={Number(route[1])} /> : <ReviewQueue />)}
       </main>
     </div>
   </div>;
