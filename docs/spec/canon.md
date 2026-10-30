@@ -37,7 +37,7 @@ Run these in code, independent of the writing model:
 - Open threads are tracked and listed.
 
 ## Status: proposals and commit path (M3 T7, migrations 0016 and 0017)
-Implemented: structured, append-only canon proposals with an owner-approved commit. Not implemented: the deterministic impact and conflict checks (#61) and the UI (#62). Locations and timeline events are out of scope for now.
+Implemented: structured, append-only canon proposals with an owner-approved commit. The deterministic impact and conflict checks are implemented (see "Status: impact and conflict checks" below). Not implemented: the UI (#62). Locations and timeline events are out of scope for now.
 
 **Rules.** Every proposal needs an explicit owner decision. There is no auto-approve, no "minor change" policy and no bypass. A stage or agent can only call `canon.Create`, which writes nothing to canon. Payloads are untrusted: decoded strictly (unknown fields and trailing data refused), validated in code, and validated again at commit.
 
@@ -63,3 +63,18 @@ Limitation: `characters` keeps the owner's existing direct edit endpoints (`POST
 - Hook for #61: run the deterministic checks on the stored `Proposal.Payload` before showing it; the checks must not write canon. `commit` is unexported so `Approve` is the only commit path.
 
 **HTTP** (under the default-deny session middleware, rate limits and Origin guard; the actor is the session identity): `POST /api/canon/proposals` `{kind, payload, rationale, episode_id}` returns 201 `{id}`; `GET /api/canon/proposals?status=&limit=`; `GET /api/canon/proposals/:id`; `POST /api/canon/proposals/:id/approve` and `/reject` with `{reason}` (required).
+
+## Status: impact and conflict checks (M3 T8, no migration)
+`internal/canon/checks.go`: pure Go, no model. `Analyze(Proposal, Snapshot) Report` is a pure function; `CheckProposal(ctx, db, projectID, id)` loads the proposal and current canon (read-only queries) and calls it. `GET /api/canon/proposals/:id/impact` returns the `Report` under the same session middleware (404 for an unknown proposal).
+
+**Advisory only.** The report never approves, rejects, blocks or decides anything and `Approve` does not consult it: the owner can approve a proposal that has conflict findings (the commit path still refuses what it cannot apply). `advisory` is always `true`. A proposal that is already decided gets one info finding `proposal.decided` instead of checks (it would only conflict with itself).
+
+**Report.** `{proposal_id, kind, status, advisory, impact: {characters, relationships, episodes}, findings}`. Impact: characters the proposal names (with `exists`), established relationships touching them, and episodes whose summary lists an affected character or that are the proposal's episode or a fact's source. Each finding is `{code, severity, message}`, severity `conflict`, `warning` or `info`, sorted by severity, then code, then message. Codes are stable so the UI can map them to TH/EN; the message is English fallback.
+
+**Checks** (what each can and cannot do):
+- Relationship: no self-relationship (`relationship.self`); parent/child cycle, so nobody is their own ancestor at any depth (`relationship.ancestor_cycle`; `child(a,b)` counts as `parent(b,a)`, dates ignored); spouse periods overlapping another spouse of either person (`relationship.spouse_overlap`, warning); spouses that never exist at the same time (`relationship.spouses_not_contemporary`); `starts_on <= ends_on` (`chronology.relationship_end_before_start`); relationship starting before a character arrives or after they are gone (warnings); duplicate of an established relationship for an overlapping period, direction-normalized (`relationship.duplicate`, warning); unknown character (`character.missing`, conflict: Approve would fail).
+- Character create/update (update is merged with the current record first): slug already exists, same name as another character (warning), status date before arrival, and presence of the character in the episodes whose summary lists them, judged with `Present` against the episode's in-story date (`presence.episode_conflict`); existing relationships against the new lifetime.
+- Facts: duplicate of an established fact after lowercasing, collapsing whitespace and trimming trailing punctuation (`fact.duplicate`, conflict); missing source episode.
+- Chronology: for the proposal's episode and a fact's source episode, in-story date order against the other dated episodes by episode number (`chronology.episode_order`, warning).
+
+**What cannot be checked (reported as info, `cannot check: <why>`, never silently passed).** Age and life stage: characters have no birth date or life stage in the data model (`age.no_birth_data`, `relationship.age_gap`). Contradiction with established facts: facts are free text, so only exact duplicates are found (`fact.free_text`); free-text contradictions need the advisory LLM review, which is not built. Presence: `presence.no_summaries` / `presence.no_dated_appearances` when no episode summary or dated appearance exists; `chronology.episode_no_date` when the episode has no in-story date. Timeline events and locations are not canon tables yet.
