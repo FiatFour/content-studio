@@ -62,7 +62,7 @@ func (l Limits) bodyLimit(path string) int64 {
 	switch {
 	case strings.HasPrefix(path, "/api/auth/"):
 		return small(authBody)
-	case path == "/api/settings", strings.HasPrefix(path, "/api/notifications/"),
+	case path == "/api/settings", strings.HasPrefix(path, "/api/resources/"), strings.HasPrefix(path, "/api/notifications/"),
 		strings.HasPrefix(path, "/api/runs/"), strings.HasPrefix(path, "/api/videos/"):
 		return small(smallBody)
 	}
