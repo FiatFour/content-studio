@@ -12,6 +12,7 @@ import { ArtifactCompare, ArtifactHistory } from "./pages/History";
 import { LoginScreen } from "./pages/Login";
 import { Security } from "./pages/Security";
 import { Providers } from "./pages/Providers";
+import { TowerPage } from "./pages/Tower";
 import { LangSwitch } from "./ui";
 
 function useHash(): string[] {
@@ -79,7 +80,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
   const page = route[0] ?? "home";
   const nav: { id: string; label: string; tag?: string; to?: string }[] = [
     { id: "home", label: t("menu.home"), to: "#/" },
-    { id: "tower", label: t("menu.tower"), tag: t("menu.tag.m4") },
+    { id: "tower", label: t("menu.tower"), to: "#/tower" },
     { id: "episodes", label: t("menu.episodes"), to: "#/episodes" },
     { id: "characters", label: t("menu.characters"), to: "#/characters" },
     { id: "review", label: t("menu.review"), to: "#/review" },
@@ -117,6 +118,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
         {page === "canon" && (route[1] ? <CanonProposalPage id={Number(route[1])} /> : <CanonProposals />)}
         {page === "security" && <Security />}
         {page === "providers" && <Providers />}
+        {page === "tower" && <TowerPage />}
         {page === "history" && route[1] && <ArtifactHistory episodeId={Number(route[1])} />}
         {page === "compare" && route[1] && route[2] && <ArtifactCompare a={Number(route[1])} b={Number(route[2])} />}
         {page === "review" &&(route[1] ? <ReviewPage id={Number(route[1])} /> : <ReviewQueue />)}
