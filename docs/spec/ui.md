@@ -62,7 +62,7 @@ A cutaway multi-storey building drawn in an original thick-outline cartoon style
 - **Floor labels** are buttons showing the floor code, agent name, a one-line description and a live status dot. Clicking a label or a team-list row shows that agent's details (handoff from/to, current task, provider, last log line) in a card under the tower.
 - **Right column:** today's episodes with progress, AI team list (tasks completed per agent; no made-up levels or points), and the clip waiting for review.
 - **Pipeline panel** under the tower: the active episode's 8 stages. The last step is Export, never Publish.
-- Status: `GET /api/tower` (read-only, session required) is built (#69); the UI is not. The mapping lives in `internal/tower` (pure, table-tested) and is the only place floor states are decided. Animation tickets cite this table.
+- Status: `GET /api/tower` (read-only, session required) is built (#69). The static scene is built at `#/tower` (#70, `web/src/pages/Tower.tsx`, `TowerScene.tsx`, pure mapping in `tower.ts`): floors, elevator with the car parked at the active episode's floor (else the working/failed/waiting floor; with nothing running it rests at G and the page says so), floor signs and label buttons with a per-state glyph (tick, dot, ring, pause, cross, dash) plus the state word. No animation, crates, side panels or progress tracker yet (#71, #72). On a failed or unreachable backend the scene freezes (greyed) on the last payload under a "disconnected" or error banner. The mapping lives in `internal/tower` (pure, table-tested) and is the only place floor states are decided. Animation tickets cite this table.
 
 **Floors and what feeds them**
 
