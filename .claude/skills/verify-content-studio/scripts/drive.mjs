@@ -283,6 +283,54 @@ flows.sources = async function (page) {
   await page.screenshot({ path: `${evidence}/sources-th.png`, fullPage: true });
 };
 
+// Knowledge Shorts through the UI only: create the episode (no run yet), see the pending state, try to start
+// with no source (refused, message shown), paste a source, start, and read the stored run. No worker runs here,
+// so the script job stays queued; nothing here proves the real models work.
+flows["shorts-episode"] = async (page) => {
+  await api("/settings", { method: "PUT", body: JSON.stringify({ ui_lang: "en" }) });
+  await page.goto(`${env.URL}/#/episodes`);
+  const title = `shorts ${env.ID}`;
+  await page.getByLabel(t("en", "episodes.form.profile")).selectOption("knowledge_shorts");
+  check("Knowledge Shorts option carries no Not-implemented mark", (await page.getByRole("option", { name: t("en", "profile.knowledge_shorts"), exact: true }).count()) === 1);
+  await expectVisible("Shorts hint about sources", page.getByText(t("en", "episodes.form.shortsHint"), { exact: true }));
+  check("submit is enabled", await page.getByRole("button", { name: t("en", "episodes.form.submit") }).isEnabled());
+  await page.getByLabel(t("en", "episodes.form.title")).fill(title);
+  await page.getByLabel(t("en", "episodes.form.idea")).fill("ทำไมน้ำทะเลถึงเค็ม");
+  await page.getByLabel(t("en", "episodes.form.length")).fill("45");
+  await page.screenshot({ path: `${evidence}/form-en.png`, fullPage: true });
+  await page.getByRole("button", { name: t("en", "episodes.form.submit") }).click();
+  await page.waitForURL(/#\/episodes\/\d+$/, { timeout: 8000 });
+  const id = Number(page.url().split("/").pop());
+  await expectVisible("pending state card", page.getByRole("heading", { name: t("en", "episode.start.title") }));
+  let ep = (await api(`/episodes/${id}`)).body;
+  check("backend: shorts episode with no run", ep?.episode?.profile === "knowledge_shorts" && ep.runs.length === 0, JSON.stringify(ep?.runs));
+  await page.screenshot({ path: `${evidence}/pending-en.png`, fullPage: true });
+  await page.getByRole("button", { name: t("en", "episode.start.button") }).click();
+  await expectVisible("refusal asks for a source", page.getByRole("alert").filter({ hasText: "at least one source" }));
+  ep = (await api(`/episodes/${id}`)).body;
+  check("backend: still no run after the refused start", ep.runs.length === 0);
+  await page.getByLabel(t("en", "sources.fTitle")).fill("Sea water facts");
+  await page.getByLabel(t("en", "sources.fText")).fill("น้ำทะเลมีความเค็มเฉลี่ยประมาณ 35 กรัมต่อลิตร");
+  await page.getByRole("button", { name: t("en", "sources.add"), exact: true }).click();
+  await expectVisible("source listed", page.getByText("Sea water facts").first());
+  await page.getByRole("button", { name: t("en", "episode.start.button") }).click();
+  await expectVisible("stages strip shows the script stage", page.getByText(t("en", "stage.script"), { exact: true }));
+  await expectVisible("script stage queued", page.getByText(t("en", "state.queued"), { exact: true }));
+  ep = (await api(`/episodes/${id}`)).body;
+  const run = ep.runs[0];
+  check("backend: one full run with the six Shorts stages and a queued script job", ep.runs.length === 1 && run.kind === "full" && run.stages.join() === "script,tts,images,subtitles,render,qa" && run.jobs[0]?.stage === "script" && run.jobs[0].state === "queued", JSON.stringify(run?.stages));
+  await page.screenshot({ path: `${evidence}/queued-en.png`, fullPage: true });
+  await api("/settings", { method: "PUT", body: JSON.stringify({ ui_lang: "th" }) });
+  await page.reload();
+  await expectVisible("Thai stage label", page.getByText(t("th", "stage.script"), { exact: true }));
+  await page.screenshot({ path: `${evidence}/queued-th.png`, fullPage: true });
+  await page.goto(`${env.URL}/#/episodes`);
+  await page.reload();
+  await page.getByLabel(t("th", "episodes.form.profile")).selectOption("knowledge_shorts");
+  await expectVisible("Thai shorts hint", page.getByText(t("th", "episodes.form.shortsHint"), { exact: true }));
+  await page.screenshot({ path: `${evidence}/form-th.png`, fullPage: true });
+};
+
 if (!flows[flow]) { console.error(`unknown flow ${flow}; choose ${Object.keys(flows).join(" | ")}`); process.exit(2); }
 const browser = await chromium.launch();
 const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });

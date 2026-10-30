@@ -131,5 +131,7 @@ A cutaway multi-storey "agent tower" (see `ui.md`): one floor per pipeline stage
 ## M5 — Second content profile
 Knowledge Shorts. This proves the engine is profile-agnostic without major rewrites.
 
+**Status (T1 to T7 built, owner smoke pending):** both profiles run through one queue and one worker (T7). Verified with fakes only: both reach ready-for-review with QA passed side by side, re-render works for both, approval and export are bound to the exact hash. Not verified: any real LLM, voice, image model or Thai-font render for Shorts (owner smoke, separate issue). Details and limits in `product.md`.
+
 ## Never
 Autonomous publishing. Future publishing adapters may only prepare drafts, and every publish requires explicit human approval of an exact version.

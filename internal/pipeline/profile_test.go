@@ -30,10 +30,9 @@ func TestKnowledgeShortsIsASpecOnly(t *testing.T) {
 	if s.MinDurationS != 30 || s.MaxDurationS != 60 {
 		t.Fatalf("duration range %d-%d, want 30-60", s.MinDurationS, s.MaxDurationS)
 	}
-	// T5 edit: the stage implementations now exist (len(Stages) was asserted 0 before), but the
-	// profile stays unrunnable until T6 adds the qa stage.
-	if s.Runnable() || len(s.Stages["full"]) != 0 {
-		t.Fatal("knowledge_shorts must not be runnable until its stages exist")
+	// T7 edit: this asserted the profile was not runnable (no stages). It has six stages now.
+	if !s.Runnable() || len(s.Stages["full"]) != 6 || len(s.Stages["rerender"]) != 2 {
+		t.Fatal("knowledge_shorts must be runnable with its stages")
 	}
 	if !pipeline.FictionalSeriesSpec().Runnable() {
 		t.Fatal("fictional_series must be runnable")

@@ -22,12 +22,8 @@ type Spec struct {
 	// QARules names the QA rule set (it matches the model label recorded on the QA report).
 	QARules string
 	Review  ReviewConfig
-	// PlannedStages lists stage names that already have an implementation but are not wired into
-	// Stages because the profile is not finished. It is data only: it never makes a profile
-	// runnable, so Runnable stays false until Stages is filled in (M5 T5/T6).
-	PlannedStages []string
 	// Visual is the look and voice of a profile whose script is not a character drama (nil for
-	// Fictional Series). It never makes a profile runnable.
+	// Fictional Series).
 	Visual *VisualSpec
 }
 
@@ -130,8 +126,8 @@ var fictionalSeriesSpec = Spec{
 // KnowledgeShortsID is the id of the Knowledge Shorts profile (decisions D15 to D17).
 const KnowledgeShortsID = "knowledge_shorts"
 
-// knowledgeShorts is registered as a spec only (M5 T2): its length range is known, but it has no
-// stages, so it is not runnable. Later M5 tasks (T3 to T6) add its research, script, visual and QA stages.
+// knowledgeShorts is the Knowledge Shorts profile. It became runnable in M5 T7, once its script (T4),
+// visual (T5) and QA (T6) stages existed and the queue and worker could run more than one profile.
 type knowledgeShorts struct{}
 
 func (knowledgeShorts) Spec() Spec { return knowledgeShortsSpec }
@@ -151,13 +147,14 @@ func (knowledgeShorts) Stages(d *Deps) map[string]jobs.Stage {
 	}
 }
 
-// PlannedStages is the ordered stage list; Stages stays empty so the profile is still refused with
-// 501 until T7 wires the multi-profile queue and worker and moves this list into Stages["full"].
-// Resources already say which stages hold the GPU.
+// Resources say which stages hold the GPU (the same as Fictional Series: render and qa use only ffmpeg).
 var knowledgeShortsSpec = Spec{
 	ID: KnowledgeShortsID, MinDurationS: 30, MaxDurationS: 60, QARules: "qa-rules-shorts-v1",
-	PlannedStages: []string{"script", "tts", "images", "subtitles", "render", "qa"},
-	Resources:     map[string]string{"script": "gpu", "tts": "gpu", "images": "gpu"},
+	Stages: map[string][]string{
+		"full":     {"script", "tts", "images", "subtitles", "render", "qa"},
+		"rerender": {"render", "qa"},
+	},
+	Resources: map[string]string{"script": "gpu", "tts": "gpu", "images": "gpu"},
 	Visual: &VisualSpec{
 		StylePrefix: "flat vector infographic illustration, simple shapes, clean flat colors, minimal icons and diagrams, " +
 			"plain light background, no people, vertical framing",
@@ -177,3 +174,30 @@ func FictionalSeriesSpec() Spec { return fictionalSeriesSpec }
 
 // FictionalSeries is the queue plan derived from the Fictional Series profile.
 var FictionalSeries = fictionalSeriesSpec.Plan()
+
+// RunnablePlans returns the queue plan of every registered profile that can run, keyed by profile id.
+// A profile registered as a spec only is left out, so a run for it is refused rather than started.
+func RunnablePlans() map[string]jobs.Plan {
+	plans := map[string]jobs.Plan{}
+	for _, id := range Profiles.IDs() {
+		p, _ := Profiles.Get(id)
+		if spec := p.Spec(); spec.Runnable() {
+			plans[id] = spec.Plan()
+		}
+	}
+	return plans
+}
+
+// RunnableStages returns the stage implementations of every runnable profile, keyed by profile id and
+// then stage name. The stage names are shared between profiles but the implementations are not (the
+// script stage differs), so a job must look up its own profile's entry.
+func (d *Deps) RunnableStages() map[string]map[string]jobs.Stage {
+	out := map[string]map[string]jobs.Stage{}
+	for _, id := range Profiles.IDs() {
+		p, _ := Profiles.Get(id)
+		if p.Spec().Runnable() {
+			out[id] = p.Stages(d)
+		}
+	}
+	return out
+}

@@ -79,6 +79,11 @@ export function EpisodeDetail({ id }: { id: number }) {
       <p className="muted mt-1"><strong>{t("episode.idea")}:</strong> {e.idea}</p><p className="muted text-sm">{t(profileLabel(e.profile))} · {t("episodes.target", { s: e.target_duration_s })}</p></Card>
     <CanonCard id={e.id} inStoryDate={e.in_story_date} summary={summary} />
     {e.profile === "knowledge_shorts" && <SourcesCard episodeId={e.id} />}
+    {!run && e.profile === "knowledge_shorts" && <Card title={t("episode.start.title")}>
+      <p className="muted text-sm">{t("episode.start.help")}</p>
+      <div className="mt-3"><button className="btn btn-primary" onClick={() => void act(`/episodes/${e.id}/run`)}>{t("episode.start.button")}</button></div>
+      {msg && <p role="alert" className="mt-2 text-red">{msg}</p>}
+    </Card>}
     {run && <Card title={<span className="flex flex-wrap items-center gap-3">{t("episode.stages")} <StateBadge state={run.state} /> <span className="muted text-sm">{t(`run.${run.kind}` as Key)} #{run.id}</span></span>}>
       <ol className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">{run.stages.map((s) => { const j = run.jobs.find((x) => x.stage === s);
         return <li key={s} className="inner" style={{ borderTop: `4px solid ${agentColor[s]}` }}>

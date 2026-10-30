@@ -339,16 +339,17 @@ func rewire(t *testing.T, h *shortsHarness, l providers.LLM) *shortsHarness {
 	return h
 }
 
-// The script stage exists, but the profile must stay unrunnable (and the API 501) until T5/T6 add the rest.
-func TestKnowledgeShortsWithScriptStageIsStillNotRunnable(t *testing.T) {
+// T7 edit: this asserted the profile stayed unrunnable with PlannedStages. The six stages are now its
+// production Stages list and the profile is runnable.
+func TestKnowledgeShortsStageListIsRunnable(t *testing.T) {
 	p, _ := pipeline.Profiles.Get(pipeline.KnowledgeShortsID)
 	spec := p.Spec()
 	// T5 edit: planned stages grew from {script} to the five stages, and Stages(d) now returns them.
 	// T6 edit: the planned list grew from five stages to six (qa added).
-	if len(spec.PlannedStages) != 6 || spec.PlannedStages[0] != "script" {
-		t.Fatalf("planned stages %v", spec.PlannedStages)
+	if len(spec.Stages["full"]) != 6 || spec.Stages["full"][0] != "script" {
+		t.Fatalf("stages %v", spec.Stages["full"])
 	}
-	if spec.Runnable() || len(spec.Plan().Full) != 0 {
-		t.Fatal("knowledge_shorts must stay unrunnable without its qa stage")
+	if !spec.Runnable() || len(spec.Plan().Full) != 6 {
+		t.Fatal("knowledge_shorts must be runnable with its six stages")
 	}
 }

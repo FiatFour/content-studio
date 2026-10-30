@@ -1,11 +1,11 @@
 import type { Key } from "./i18n";
 
 // The profiles the new-episode form offers. Ranges mirror the Go profile specs (internal/pipeline/profile.go);
-// the server enforces them. runnable is false until a profile's stages exist: the form will not submit it.
+// the server enforces them. runnable is false for a profile whose stages do not exist: the form will not submit it.
 export type ProfileId = "fictional_series" | "knowledge_shorts";
 export const profiles: { id: ProfileId; min: number; max: number; runnable: boolean }[] = [
   { id: "fictional_series", min: 60, max: 120, runnable: true },
-  { id: "knowledge_shorts", min: 30, max: 60, runnable: false },
+  { id: "knowledge_shorts", min: 30, max: 60, runnable: true },
 ];
 
 export function profileLabel(id: string): Key {
