@@ -37,7 +37,7 @@ Run these in code, independent of the writing model:
 - Open threads are tracked and listed.
 
 ## Status: proposals and commit path (M3 T7, migrations 0016 and 0017)
-Implemented: structured, append-only canon proposals with an owner-approved commit. The deterministic impact and conflict checks are implemented (see "Status: impact and conflict checks" below). Not implemented: the UI (#62). Locations and timeline events are out of scope for now.
+Implemented: structured, append-only canon proposals with an owner-approved commit. The deterministic impact and conflict checks are implemented (see "Status: impact and conflict checks" below). The UI is implemented (see "Status: proposals page" below). Locations and timeline events are out of scope for now.
 
 **Rules.** Every proposal needs an explicit owner decision. There is no auto-approve, no "minor change" policy and no bypass. A stage or agent can only call `canon.Create`, which writes nothing to canon. Payloads are untrusted: decoded strictly (unknown fields and trailing data refused), validated in code, and validated again at commit.
 
@@ -78,3 +78,8 @@ Limitation: `characters` keeps the owner's existing direct edit endpoints (`POST
 - Chronology: for the proposal's episode and a fact's source episode, in-story date order against the other dated episodes by episode number (`chronology.episode_order`, warning).
 
 **What cannot be checked (reported as info, `cannot check: <why>`, never silently passed).** Age and life stage: characters have no birth date or life stage in the data model (`age.no_birth_data`, `relationship.age_gap`). Contradiction with established facts: facts are free text, so only exact duplicates are found (`fact.free_text`); free-text contradictions need the advisory LLM review, which is not built. Presence: `presence.no_summaries` / `presence.no_dated_appearances` when no episode summary or dated appearance exists; `chronology.episode_no_date` when the episode has no in-story date. Timeline events and locations are not canon tables yet.
+
+## Status: proposals page (M3 T9, no migration)
+Web route `#/canon` (list with a status filter) and `#/canon/<id>` (detail). The detail shows the stored proposal as text (payload as indented JSON, never HTML), the impact and the findings from `GET /api/canon/proposals/:id/impact`. Findings are grouped conflict, warning, cannot-check (info whose message starts `cannot check:`), info. Conflicts get a red banner but never disable or pre-decide anything. Approve and Reject need a reason of 1 to 500 characters (buttons stay disabled until valid), call the existing Origin-checked POST endpoints, then re-read the proposal from the server; a refused approve (for example an unknown character) shows the server's sanitized error and the proposal stays proposed. Limits: finding messages are the server's English text (only severity and group labels are TH/EN); no create-proposal UI ("Not implemented").
+
+QA reports: the existing review page (`#/review/<video id>`) QA card now shows, per rule, the rule version, artifact ID and check time (`GET /api/videos/:id/review` `qa[]` gained `artifact_id` and `created_at`), plus a pass/not-passed count.

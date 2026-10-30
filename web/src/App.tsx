@@ -5,6 +5,7 @@ import { I18nProvider, useI18n, type Lang } from "./i18n";
 import { Home } from "./pages/Home";
 import { Episodes } from "./pages/Episodes";
 import { Characters } from "./pages/Characters";
+import { CanonProposalPage, CanonProposals } from "./pages/Canon";
 import { EpisodeDetail } from "./pages/EpisodeDetail";
 import { ReviewPage, ReviewQueue } from "./pages/Review";
 import { ArtifactCompare, ArtifactHistory } from "./pages/History";
@@ -82,6 +83,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
     { id: "episodes", label: t("menu.episodes"), to: "#/episodes" },
     { id: "characters", label: t("menu.characters"), to: "#/characters" },
     { id: "review", label: t("menu.review"), to: "#/review" },
+    { id: "canon", label: t("menu.canon"), to: "#/canon" },
     { id: "security", label: t("menu.security"), to: "#/security" },
     { id: "providers", label: t("menu.providers"), tag: t("menu.tag.m2"), to: "#/providers" },
     { id: "library", label: t("menu.library"), tag: t("menu.tag.m3") },
@@ -112,6 +114,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
         {page === "home" && <Home sys={s} />}
         {page === "episodes" && (route[1] ? <EpisodeDetail id={Number(route[1])} /> : <Episodes />)}
         {page === "characters" && <Characters />}
+        {page === "canon" && (route[1] ? <CanonProposalPage id={Number(route[1])} /> : <CanonProposals />)}
         {page === "security" && <Security />}
         {page === "providers" && <Providers />}
         {page === "history" && route[1] && <ArtifactHistory episodeId={Number(route[1])} />}

@@ -48,7 +48,7 @@ export type VideoVersion = {
   created_at: string; decision: string | null; exported: boolean;
 };
 export type ArtifactRow = { id: number; type: string; item_key: string; version: number; sha256: string; validation_status: string; provider: string; model: string; meta: Record<string, unknown> };
-export type QA = { rule: string; rule_version: number; severity: "blocking" | "warning" | "advisory"; passed: boolean; reason: string; suggested_fix: string };
+export type QA = { artifact_id: number; created_at: string; rule: string; rule_version: number; severity: "blocking" | "warning" | "advisory"; passed: boolean; reason: string; suggested_fix: string };
 export type Review = {
   video: VideoVersion; episode_id: number; qa: QA[];
   decisions: { id: number; sha256: string; decision: string; notes: string; reviewer: string; created_at: string }[];
@@ -82,4 +82,17 @@ export type System = {
   cpu_pct?: number; ram_used_mib?: number; ram_total_mib?: number; vram_used_mib?: number; vram_total_mib?: number;
   disk_free_gib?: number; disk_total_gib?: number; gpu_slot_stage: string | null; gpu_slot_episode: string | null;
   running_jobs: number; episodes_ready_today: number; cloud_spend: null;
+};
+export type CanonProposal = {
+  id: number; kind: string; payload: unknown; rationale: string; proposed_by: string; episode_id: number | null; created_at: string;
+  status: "proposed" | "approved" | "rejected"; decided_by: string | null; reason: string | null; decided_at: string | null;
+};
+export type CanonImpact = {
+  proposal_id: number; kind: string; status: string; advisory: boolean;
+  impact: {
+    characters: { slug: string; name: string; exists: boolean }[];
+    relationships: { id: number; from: string; to: string; type: string }[];
+    episodes: { id: number; number: number; title: string; in_story_date: string | null; reason: string }[];
+  };
+  findings: { code: string; severity: "conflict" | "warning" | "info"; message: string }[];
 };
