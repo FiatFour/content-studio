@@ -33,6 +33,11 @@ export type Job = {
   provider: string | null; model: string | null; error_class: string | null; error_message: string | null; wait_reason: string | null;
   started_at: string | null; finished_at: string | null; updated_at: string;
 };
+export type JobInspection = Job & {
+  run_id: number; max_attempts: number; run_after: string | null; lease_expires_at: string | null; heartbeat_at: string | null;
+  lease_expired: boolean | null; execution: { input_hash: string; attempt: number; at: string } | null;
+  resume: { verdict: "safe" | "unsafe" | "unknown" | "not_applicable"; reason: string };
+};
 export type Run = {
   id: number; kind: "full" | "rerender" | "rewrite"; parent_run_id: number | null; feedback: string | null; state: string; created_at: string;
   finished_at: string | null; stages: string[]; jobs: Job[];
