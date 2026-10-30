@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -122,7 +123,12 @@ func run(log *slog.Logger) error {
 	if _, err := os.Stat(cfg.WebDir); err != nil {
 		srv.WebDir = ""
 	}
-	hs := &http.Server{Addr: cfg.Addr, Handler: srv.Echo(), ReadHeaderTimeout: 10 * time.Second}
+	srv.Limits = api.Limits{MaxBody: cfg.MaxBodyBytes, AnonPerMinute: cfg.RateAnonPerM, AuthPerMinute: cfg.RateAuthPerM, StreamWrite: cfg.StreamTimeout}
+	hs := &http.Server{
+		Addr: cfg.Addr, Handler: srv.Echo(),
+		ReadHeaderTimeout: 10 * time.Second, ReadTimeout: cfg.ReadTimeout, WriteTimeout: cfg.WriteTimeout, IdleTimeout: cfg.IdleTimeout,
+		MaxHeaderBytes: 32 << 10, // artifact downloads extend their own write deadline (api.Limits.StreamWrite)
+	}
 	go func() {
 		<-ctx.Done()
 		shut, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -131,8 +137,17 @@ func run(log *slog.Logger) error {
 			log.Error("shutdown", "err", err)
 		}
 	}()
-	log.Info("listening", "addr", cfg.Addr, "web", srv.WebDir != "")
-	if err := hs.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+	log.Info("listening", "addr", cfg.Addr, "web", srv.WebDir != "", "tls", cfg.TLSCert != "")
+	if cfg.AllowInsecureRemote {
+		log.Warn("STUDIO_ALLOW_INSECURE_REMOTE is set: plain http may be reachable off this machine")
+	}
+	if cfg.TLSCert != "" {
+		hs.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		err = hs.ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey)
+	} else {
+		err = hs.ListenAndServe()
+	}
+	if !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 	return nil

@@ -27,6 +27,20 @@ type Config struct {
 	SessionIdle   time.Duration
 	SessionMaxAge time.Duration
 
+	// Transport security (#17). TLS is served only when both files are set. A non-loopback Addr needs
+	// TLS, or AllowInsecureRemote (an explicit override that serves plain http off-machine).
+	TLSCert, TLSKey     string
+	AllowInsecureRemote bool
+
+	// Request limits (docs/spec/security-ops.md "Transport security"). Zero rate limits mean defaults.
+	MaxBodyBytes  int64
+	RateAnonPerM  int
+	RateAuthPerM  int
+	ReadTimeout   time.Duration
+	WriteTimeout  time.Duration // not applied to artifact downloads, which use StreamWrite
+	IdleTimeout   time.Duration
+	StreamTimeout time.Duration
+
 	OllamaURL string
 	LLMModel  string
 	LLMNumCtx int
@@ -128,12 +142,8 @@ func Load() (Config, error) {
 	}
 	c.PollInterval = time.Second
 	c.StageTimeout = 45 * time.Minute
-	host, _, err := net.SplitHostPort(c.Addr)
-	if err != nil {
-		return c, fmt.Errorf("STUDIO_ADDR: %w", err)
-	}
-	if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
-		return c, fmt.Errorf("STUDIO_ADDR must be a loopback address in M1a, got %q", host)
+	if err := c.loadTransport(); err != nil {
+		return c, err
 	}
 	for name, raw := range map[string]string{"OLLAMA_URL": c.OllamaURL, "COMFYUI_URL": c.ComfyURL, "THAIVOICE_URL": c.ThaiVoiceURL} {
 		if err := requireLocal(name, raw); err != nil {
@@ -177,6 +187,72 @@ func (c *Config) loadAuth() error {
 	return nil
 }
 
+// loadTransport reads the bind, TLS and limit settings. The default (loopback, plain http) is unchanged.
+// A non-loopback STUDIO_ADDR is refused unless STUDIO_TLS_CERT and STUDIO_TLS_KEY are set, or
+// STUDIO_ALLOW_INSECURE_REMOTE=true (which leaves passkeys and the session cookie exposed to the network;
+// see docs/remote-access.md). Cert and key must both be set and readable.
+func (c *Config) loadTransport() error {
+	host, _, err := net.SplitHostPort(c.Addr)
+	if err != nil {
+		return fmt.Errorf("STUDIO_ADDR: %w", err)
+	}
+	c.TLSCert, c.TLSKey = os.Getenv("STUDIO_TLS_CERT"), os.Getenv("STUDIO_TLS_KEY")
+	if (c.TLSCert == "") != (c.TLSKey == "") {
+		return fmt.Errorf("STUDIO_TLS_CERT and STUDIO_TLS_KEY must be set together")
+	}
+	if c.TLSCert != "" {
+		for name, p := range map[string]string{"STUDIO_TLS_CERT": c.TLSCert, "STUDIO_TLS_KEY": c.TLSKey} {
+			if f, err := os.Open(p); err != nil {
+				return fmt.Errorf("%s is not readable", name) // the path is not echoed
+			} else {
+				f.Close()
+			}
+		}
+	}
+	switch v := os.Getenv("STUDIO_ALLOW_INSECURE_REMOTE"); v {
+	case "", "false":
+	case "true":
+		c.AllowInsecureRemote = true
+	default:
+		return fmt.Errorf("STUDIO_ALLOW_INSECURE_REMOTE must be true or false")
+	}
+	if ip := net.ParseIP(host); (ip == nil || !ip.IsLoopback()) && c.TLSCert == "" && !c.AllowInsecureRemote {
+		return fmt.Errorf("STUDIO_ADDR %q is not a loopback address: set STUDIO_TLS_CERT and STUDIO_TLS_KEY, or put a TLS proxy in front and keep a loopback address (docs/remote-access.md)", host)
+	}
+	if v := os.Getenv("STUDIO_MAX_BODY_BYTES"); v != "" {
+		if c.MaxBodyBytes, err = strconv.ParseInt(v, 10, 64); err != nil || c.MaxBodyBytes < 1024 || c.MaxBodyBytes > 64<<20 {
+			return fmt.Errorf("STUDIO_MAX_BODY_BYTES must be between 1024 and 67108864")
+		}
+	}
+	for _, r := range []struct {
+		key string
+		dst *int
+	}{{"STUDIO_RATE_ANON_PER_MIN", &c.RateAnonPerM}, {"STUDIO_RATE_AUTH_PER_MIN", &c.RateAuthPerM}} {
+		if v := os.Getenv(r.key); v != "" {
+			if *r.dst, err = strconv.Atoi(v); err != nil || *r.dst < 1 || *r.dst > 100000 {
+				return fmt.Errorf("%s must be between 1 and 100000", r.key)
+			}
+		}
+	}
+	for _, d := range []struct {
+		key string
+		def time.Duration
+		dst *time.Duration
+	}{
+		{"STUDIO_READ_TIMEOUT", 30 * time.Second, &c.ReadTimeout},
+		{"STUDIO_WRITE_TIMEOUT", 60 * time.Second, &c.WriteTimeout},
+		{"STUDIO_IDLE_TIMEOUT", 2 * time.Minute, &c.IdleTimeout},
+		{"STUDIO_STREAM_TIMEOUT", 15 * time.Minute, &c.StreamTimeout},
+	} {
+		if v := os.Getenv(d.key); v == "" {
+			*d.dst = d.def
+		} else if *d.dst, err = time.ParseDuration(v); err != nil || *d.dst < time.Second {
+			return fmt.Errorf("%s must be a duration of at least 1s, like 30s", d.key)
+		}
+	}
+	return nil
+}
+
 func envDuration(key string, def time.Duration) (time.Duration, error) {
 	v := os.Getenv(key)
 	if v == "" {
@@ -193,8 +269,8 @@ func envDuration(key string, def time.Duration) (time.Duration, error) {
 // There are no cloud adapters, and a provider URL pointing off-machine is refused at startup.
 func requireLocal(name, raw string) error {
 	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" {
-		return fmt.Errorf("%s is not a valid URL", name)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil {
+		return fmt.Errorf("%s is not a valid http(s) URL without credentials", name)
 	}
 	host := u.Hostname()
 	if host == "localhost" {

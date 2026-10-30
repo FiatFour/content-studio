@@ -38,13 +38,17 @@ type Server struct {
 	Notify       *notify.Service // nil disables the /api/notifications routes
 	Auth         *auth.Service   // nil refuses every non-public /api request (fail closed)
 	CloudEnabled bool            // backend config STUDIO_CLOUD_ENABLED, shown read-only by GET /api/policies
+	Limits       Limits          // zero value means the defaults (secure.go)
+	rl           *rateLimiter
 }
 
 func (s *Server) Echo() *echo.Echo {
 	e := echo.New()
+	s.rl = newRateLimiter()
 	e.HideBanner, e.HidePort = true, true
 	e.HTTPErrorHandler = s.errorHandler
-	e.Use(s.logRequests, s.originGuard, s.requireSession)
+	e.Pre(s.securityHeaders)
+	e.Use(s.logRequests, s.rateLimit, s.originGuard, s.requestLimits, s.streamDeadline, s.requireSession)
 
 	a := e.Group("/api")
 	a.GET("/health", s.health)

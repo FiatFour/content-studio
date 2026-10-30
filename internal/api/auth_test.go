@@ -58,7 +58,8 @@ func newRigCfg(t *testing.T, cfg *auth.Config) *rig {
 	}
 	s := &api.Server{DB: db, Queue: &jobs.Queue{DB: db, Plan: pipeline.FictionalSeries, MaxAttempts: 3}, Store: st,
 		Review: &review.Service{DB: db, Store: st, ExportDir: t.TempDir()}, Auth: svc,
-		Log: slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))}
+		Limits: api.Limits{AnonPerMinute: 100000, AuthPerMinute: 100000}, // the matrix tests send hundreds of requests
+		Log:    slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))}
 	ts := httptest.NewServer(s.Echo())
 	t.Cleanup(ts.Close)
 	return &rig{ts: ts, db: db, svc: svc, logs: logs}
