@@ -1,5 +1,5 @@
 // Drives the isolated studio UI in headless Chromium the way a user would, and writes evidence.
-// usage: node drive.mjs <env file> <flow>      flows: shell | create-episode | notifications | auth
+// usage: node drive.mjs <env file> <flow>      flows: shell | create-episode | notifications | resources | auth
 // Every visible string comes from web/src/i18n/{th,en}.json, so a renamed label breaks the flow
 // loudly instead of silently passing. Exit code 0 only if every assertion held.
 import { createRequire } from "node:module";
@@ -112,6 +112,49 @@ const flows = {
     }
     await page.getByRole("button", { name: "EN", exact: true }).click();
     await expectVisible("English card title", page.getByRole("heading", { name: t("en", "notif.title") }));
+  },
+
+  // Providers & budget: resource limit and read-only task policies. Changing the GPU limit above 1 needs the
+  // warning step; the stored limit and the audit row are read back from the instance's own database.
+  async resources(page) {
+    await api("/settings", { method: "PUT", body: JSON.stringify({ ui_lang: "en" }) });
+    const sql = (q) => execFileSync("docker", ["exec", "studio-pg", "psql", "-U", "studio", "-d", env.DB, "-tAc", q], { encoding: "utf8" }).trim();
+    await page.goto(`${env.URL}/#/providers`);
+    await expectVisible("resource card", page.getByRole("heading", { name: t("en", "res.title") }));
+    const input = page.getByLabel(t("en", "res.limit", { max: 4 }));
+    check("limit input shows the stored value (1)", (await input.inputValue()) === sql("select max_concurrent from resource_limits where resource = 'gpu'"));
+    // Policies: read-only, all LOCAL_ONLY, Not implemented to change.
+    await expectVisible("policy table lists the script task", page.getByRole("cell", { name: "script", exact: true }));
+    check("four LOCAL_ONLY rows", (await page.getByRole("cell", { name: "LOCAL_ONLY", exact: true }).count()) === 4);
+    await expectVisible("cloud off is shown", page.getByText(t("en", "pol.cloudOff")));
+    // Invalid value: Save is disabled and the reason is shown.
+    await input.fill("0");
+    await expectVisible("invalid value explained", page.getByText(t("en", "res.invalid", { max: 4 })));
+    check("Save disabled for 0", await page.getByRole("button", { name: t("en", "res.save") }).isDisabled());
+    check("nothing stored for the invalid value", sql("select max_concurrent from resource_limits where resource = 'gpu'") === "1");
+    // Raising to 2 asks for confirmation first; cancel changes nothing.
+    await input.fill("2");
+    await page.getByRole("button", { name: t("en", "res.save") }).click();
+    await expectVisible("unsafe warning shown", page.getByText(t("en", "res.warnTitle")));
+    await page.screenshot({ path: `${evidence}/1-warning.png`, fullPage: true });
+    check("nothing stored before confirming", sql("select max_concurrent from resource_limits where resource = 'gpu'") === "1");
+    await page.getByRole("button", { name: t("en", "app.cancel") }).click();
+    check("cancel keeps the limit at 1", sql("select max_concurrent from resource_limits where resource = 'gpu'") === "1");
+    await page.getByRole("button", { name: t("en", "res.save") }).click();
+    await page.getByRole("button", { name: t("en", "res.confirm", { n: 2 }) }).click();
+    await expectVisible("saved message", page.getByText(t("en", "res.saved", { name: "gpu", n: 2 })));
+    check("limit 2 persisted", sql("select max_concurrent from resource_limits where resource = 'gpu'") === "2");
+    check("audit row with from 1 to 2 and unsafe confirmed", sql("select detail->>'from' || '>' || (detail->>'to') || ' ' || (detail->>'confirmed_unsafe') from audit_log where action = 'resource_limit.update'") === "1>2 true");
+    await page.reload();
+    check("a reload shows 2", (await page.getByLabel(t("en", "res.limit", { max: 4 })).inputValue()) === "2");
+    // Back to 1 needs no confirmation.
+    await page.getByLabel(t("en", "res.limit", { max: 4 })).fill("1");
+    await page.getByRole("button", { name: t("en", "res.save") }).click();
+    await expectVisible("lowered without a warning", page.getByText(t("en", "res.saved", { name: "gpu", n: 1 })));
+    check("limit back at 1", sql("select max_concurrent from resource_limits where resource = 'gpu'") === "1");
+    check("two audit rows", sql("select count(*) from audit_log where action = 'resource_limit.update'") === "2");
+    await page.getByRole("button", { name: "TH", exact: true }).click();
+    await expectVisible("Thai card title", page.getByRole("heading", { name: t("th", "res.title") }));
   },
 };
 

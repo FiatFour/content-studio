@@ -62,6 +62,8 @@ export type Notifications = {
   configured: boolean; suffix?: string; events: NotifEvent[]; recent_deliveries: NotifDelivery[]; last_delivery?: NotifDelivery;
 };
 export type NotifTestResult = { ok: boolean; http_status: number | null; error: string };
+export type Resource = { name: string; max_concurrent: number; running: number; waiting: number; safe_max: number; max: number };
+export type Policies = { tasks: { task: string; capability: string; policy: string }[]; cloud_enabled: boolean; changeable: boolean };
 export type System = {
   cpu_pct?: number; ram_used_mib?: number; ram_total_mib?: number; vram_used_mib?: number; vram_total_mib?: number;
   disk_free_gib?: number; disk_total_gib?: number; gpu_slot_stage: string | null; gpu_slot_episode: string | null;

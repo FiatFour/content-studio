@@ -28,15 +28,16 @@ import (
 const settingsUser = audit.Owner
 
 type Server struct {
-	DB          *pgxpool.Pool
-	Queue       *jobs.Queue
-	Store       *artifacts.Store
-	Review      *review.Service
-	StorageRoot string
-	WebDir      string
-	Log         *slog.Logger
-	Notify      *notify.Service // nil disables the /api/notifications routes
-	Auth        *auth.Service   // nil refuses every non-public /api request (fail closed)
+	DB           *pgxpool.Pool
+	Queue        *jobs.Queue
+	Store        *artifacts.Store
+	Review       *review.Service
+	StorageRoot  string
+	WebDir       string
+	Log          *slog.Logger
+	Notify       *notify.Service // nil disables the /api/notifications routes
+	Auth         *auth.Service   // nil refuses every non-public /api request (fail closed)
+	CloudEnabled bool            // backend config STUDIO_CLOUD_ENABLED, shown read-only by GET /api/policies
 }
 
 func (s *Server) Echo() *echo.Echo {
@@ -78,6 +79,10 @@ func (s *Server) Echo() *echo.Echo {
 	a.POST("/runs/:id/retry", s.retryRun)
 	a.POST("/videos/:id/decision", s.decide)
 	a.POST("/videos/:id/export", s.export)
+
+	a.GET("/resources", s.listResources)
+	a.PUT("/resources/:name", s.putResource)
+	a.GET("/policies", s.listPolicies)
 
 	if s.Notify != nil {
 		a.GET("/notifications", s.getNotifications)

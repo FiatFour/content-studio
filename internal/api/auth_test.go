@@ -139,6 +139,9 @@ var protectedRoutes = []struct{ method, path, body string }{
 	{"GET", "/api/notifications", ""},
 	{"PUT", "/api/notifications/events/job_failed", `{"enabled":true}`},
 	{"POST", "/api/notifications/test", ""},
+	{"GET", "/api/resources", ""},
+	{"PUT", "/api/resources/gpu", `{"max_concurrent":2,"confirm_unsafe":true}`},
+	{"GET", "/api/policies", ""},
 	{"GET", "/api/auth/credentials", ""},
 	{"DELETE", "/api/auth/credentials/1", ""},
 	{"POST", "/api/auth/logout", ""},   // keep last among real routes: it revokes the session

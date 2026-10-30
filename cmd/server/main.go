@@ -106,6 +106,7 @@ func run(log *slog.Logger) error {
 	srv := &api.Server{
 		DB: db, Queue: &jobs.Queue{DB: db, Plan: pipeline.FictionalSeries, MaxAttempts: cfg.MaxAttempts}, Store: st,
 		Review: &review.Service{DB: db, Store: st, ExportDir: cfg.ExportDir}, WebDir: cfg.WebDir, Log: log,
+		CloudEnabled: cfg.CloudEnabled,
 	}
 	if srv.Auth, err = newAuth(cfg, db); err != nil {
 		return err
