@@ -135,8 +135,10 @@ func TestDeriveFailedWaitingAndReview(t *testing.T) {
 	if tw.AwaitingReview == nil || tw.AwaitingReview.ArtifactID != 9 || tw.AwaitingReview.SHA256 != "abc" {
 		t.Errorf("%+v", tw.AwaitingReview)
 	}
-	if tw.ActiveEpisode != nil {
-		t.Error("nothing is running")
+	// No job is running, so the pipeline panel falls back to the failed run (episode 1, first on a tie);
+	// the ready-for-review clip is not an active episode.
+	if ae := tw.ActiveEpisode; ae == nil || ae.ID != 1 || ae.Pipeline[2].State != "failed" {
+		t.Errorf("active episode %+v", ae)
 	}
 	// Cancelled and decided runs are not live but were touched today: listed, with no floor.
 	got := map[int64]*string{}

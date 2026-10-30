@@ -163,6 +163,11 @@ func TestTowerFollowsRealJobState(t *testing.T) {
 	if len(*f.LastLog) > 160 {
 		t.Fatalf("log line not capped: %d", len(*f.LastLog))
 	}
+	// A failed run still shows its pipeline, with the failed stage marked and later stages pending.
+	if ae := b.Tower.ActiveEpisode; ae == nil || ae.Floor != "3F" || len(ae.Pipeline) != 8 ||
+		ae.Pipeline[0].State != "completed" || ae.Pipeline[1].State != "failed" || ae.Pipeline[2].State != "pending" {
+		t.Fatalf("failed run pipeline: %+v", ae)
+	}
 }
 
 func TestTowerShowsClipAwaitingReview(t *testing.T) {

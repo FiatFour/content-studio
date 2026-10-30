@@ -1,3 +1,4 @@
+import "../tower.css";
 import { useEffect, useRef, useState } from "react";
 import { useDocumentHidden, usePoll, useReducedMotion } from "../hooks";
 import { useI18n, type Key } from "../i18n";
@@ -33,7 +34,7 @@ export function TowerPage() {
     {q.disconnected && <div role="alert" className="card border-red text-red"><strong>{t("net.disconnected")}</strong> <span className="muted">{t("tower.frozen")}</span></div>}
     {q.error && !q.disconnected && <div role="alert" className="card border-red text-red"><strong>{t("tower.loadError")}</strong> <button className="btn ml-2" onClick={q.reload}>{t("tower.reload")}</button></div>}
     {!q.data && !q.error && <div role="status" className="card muted">{t("app.loading")}</div>}
-    {q.data && <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+    {q.data && <div className="grid items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_340px]">
       <div className="flex min-w-0 flex-col gap-4">
         <Card className={`flex overflow-x-auto !p-2 ${hidden ? "tower-paused" : ""}`}>
           <ProgressTracker floors={q.data.tower.floors} frozen={stale} motion={motion.enabled} />
