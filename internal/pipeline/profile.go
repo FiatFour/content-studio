@@ -22,6 +22,10 @@ type Spec struct {
 	// QARules names the QA rule set (it matches the model label recorded on the QA report).
 	QARules string
 	Review  ReviewConfig
+	// PlannedStages lists stage names that already have an implementation but are not wired into
+	// Stages because the profile is not finished. It is data only: it never makes a profile
+	// runnable, so Runnable stays false until Stages is filled in (M5 T5/T6).
+	PlannedStages []string
 }
 
 // ReviewConfig holds review settings a profile may tune. Approval itself is never configurable:
@@ -131,7 +135,9 @@ func (knowledgeShorts) Spec() Spec { return knowledgeShortsSpec }
 
 func (knowledgeShorts) Stages(*Deps) map[string]jobs.Stage { return map[string]jobs.Stage{} }
 
-var knowledgeShortsSpec = Spec{ID: KnowledgeShortsID, MinDurationS: 30, MaxDurationS: 60}
+// PlannedStages names the script stage (M5 T4, NewKnowledgeShortsScriptStage). Stages stays empty and
+// Stages(d) returns no implementations, so the profile is still refused with 501 until T5/T6 add the rest.
+var knowledgeShortsSpec = Spec{ID: KnowledgeShortsID, MinDurationS: 30, MaxDurationS: 60, PlannedStages: []string{"script"}}
 
 // Profiles is the registry of every content profile the app knows.
 var Profiles = NewRegistry(fictionalSeries{}, knowledgeShorts{})
