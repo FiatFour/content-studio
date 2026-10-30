@@ -62,4 +62,31 @@ A cutaway multi-storey building drawn in an original thick-outline cartoon style
 - **Floor labels** are buttons showing the floor code, agent name, a one-line description and a live status dot. Clicking a label or a team-list row shows that agent's details (handoff from/to, current task, provider, last log line) in a card under the tower.
 - **Right column:** today's episodes with progress, AI team list (tasks completed per agent; no made-up levels or points), and the clip waiting for review.
 - **Pipeline panel** under the tower: the active episode's 8 stages. The last step is Export, never Publish.
+- Status: `GET /api/tower` (read-only, session required) is built (#69); the UI is not. The mapping lives in `internal/tower` (pure, table-tested) and is the only place floor states are decided. Animation tickets cite this table.
+
+**Floors and what feeds them**
+
+| Floor | Agent id | Fed by | Notes |
+|---|---|---|---|
+| B1 | `guardrails` | nothing | always `not_implemented`: cost guard and vault have no backend (D10, no cloud). The Continuity snail has no per-run data either; the response says so in `continuity.available = false`. |
+| G | `orchestrator` | run state | `active` while any live run is `running`, else `idle`. It has no job of its own, so no task count, provider or handoff. |
+| 1F / 2F / 3F / 4F / 5F | `script` / `art` / `voice` / `render` / `qa` | `jobs` | stages `script` / `images` / `tts`+`subtitles` / `render` / `qa`. |
+| 6F | `review` | undecided QA-passed video | `waiting` while a latest video version has `qa_passed` and no approval row, else `idle`. Never `active`: the owner is the actor. |
+| Roof | `export` | `exports` | `done` if an export row was made today, else `idle`. |
+
+**Live runs.** Only the latest run of each episode counts, and only while it is `running`, `failed` (it needs the owner), or `ready_for_review` with a clip that has no decision yet. Cancelled runs and decided clips leave the floors. "Today" lists live runs plus any latest run created or touched since midnight (server time).
+
+**Real job state to floor state** (`tower.FloorStateOf`; a floor looks at its stage jobs in every live run; first matching row wins):
+
+| Rule | Floor state |
+|---|---|
+| any job `failed` | `failed` |
+| any job `waiting_for_resource`, `waiting_for_human` or `retry_scheduled` | `waiting` |
+| any job `running` | `active` |
+| every planned stage of the floor, in every live run, has a `completed` job | `done` |
+| anything else (only `queued`, `cancelled`, no job yet, a stage not reached) | `idle` |
+
+Stage jobs are created one at a time as a run advances; a planned stage with no job yet therefore keeps its floor from being `done` (3F with `tts` completed and `subtitles` not reached is `idle`). A `queued` job is `idle`: nothing is working. An episode's crate stands on the floor of the first stage that has not completed, and on 6F when the run is complete and the clip awaits review.
+
+**Other fields.** `tasks_completed` is the all-time count of `completed` jobs for the floor's stages (6F: approval rows, Roof: export rows; null for B1 and G, which record nothing). `provider`/`model` and `progress` come from the floor's most relevant job (failed, waiting, running, latest completed, queued, in that order) and are null when not recorded. `handoff_from` is the agent of the previous planned stage (orchestrator for the first); `handoff_to` is set only when that job completed. `last_log` is only a failed job's error message or a waiting job's wait reason, scrubbed of absolute paths and credential-looking text, one line, at most 160 characters. There is no job log table, so a healthy floor has no last line.
 - Every pose, lamp, crate and pulse maps to a real job/agent-task state. Keep its GPU use light while local jobs run, and keep it optional: every core task works without this screen.
