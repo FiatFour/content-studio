@@ -16,8 +16,25 @@ func TestRegistryLookup(t *testing.T) {
 	if _, ok := pipeline.Profiles.Get("nope"); ok {
 		t.Fatal("unknown id must not be found")
 	}
-	if got := pipeline.Profiles.IDs(); !reflect.DeepEqual(got, []string{"fictional_series"}) {
+	if got := pipeline.Profiles.IDs(); !reflect.DeepEqual(got, []string{"fictional_series", "knowledge_shorts"}) {
 		t.Fatalf("ids = %v", got)
+	}
+}
+
+func TestKnowledgeShortsIsASpecOnly(t *testing.T) {
+	p, ok := pipeline.Profiles.Get(pipeline.KnowledgeShortsID)
+	if !ok {
+		t.Fatal("knowledge_shorts not registered")
+	}
+	s := p.Spec()
+	if s.MinDurationS != 30 || s.MaxDurationS != 60 {
+		t.Fatalf("duration range %d-%d, want 30-60", s.MinDurationS, s.MaxDurationS)
+	}
+	if s.Runnable() || len(p.Stages(&pipeline.Deps{})) != 0 {
+		t.Fatal("knowledge_shorts must not be runnable until its stages exist")
+	}
+	if !pipeline.FictionalSeriesSpec().Runnable() {
+		t.Fatal("fictional_series must be runnable")
 	}
 }
 

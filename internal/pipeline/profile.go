@@ -32,6 +32,10 @@ type ReviewConfig struct {
 	MaxAutoRewrites int
 }
 
+// Runnable reports whether the profile has stages to run. A profile registered as a spec only (no
+// stages) is not runnable: no run may be created for it.
+func (s Spec) Runnable() bool { return len(s.Stages["full"]) > 0 }
+
 // StagesFor returns the stage list for a run kind. "rerender" has its own list; every other kind uses "full".
 func (s Spec) StagesFor(kind string) []string {
 	if kind == "rerender" {
@@ -116,8 +120,21 @@ var fictionalSeriesSpec = Spec{
 	Review:       ReviewConfig{MaxAutoRewrites: jobs.MaxAutoRewrites},
 }
 
+// KnowledgeShortsID is the id of the Knowledge Shorts profile (decisions D15 to D17).
+const KnowledgeShortsID = "knowledge_shorts"
+
+// knowledgeShorts is registered as a spec only (M5 T2): its length range is known, but it has no
+// stages, so it is not runnable. Later M5 tasks (T3 to T6) add its research, script, visual and QA stages.
+type knowledgeShorts struct{}
+
+func (knowledgeShorts) Spec() Spec { return knowledgeShortsSpec }
+
+func (knowledgeShorts) Stages(*Deps) map[string]jobs.Stage { return map[string]jobs.Stage{} }
+
+var knowledgeShortsSpec = Spec{ID: KnowledgeShortsID, MinDurationS: 30, MaxDurationS: 60}
+
 // Profiles is the registry of every content profile the app knows.
-var Profiles = NewRegistry(fictionalSeries{})
+var Profiles = NewRegistry(fictionalSeries{}, knowledgeShorts{})
 
 // FictionalSeriesSpec returns the Fictional Series profile data.
 func FictionalSeriesSpec() Spec { return fictionalSeriesSpec }
