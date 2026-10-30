@@ -141,6 +141,7 @@ var protectedRoutes = []struct{ method, path, body string }{
 	{"GET", "/api/audit", ""},
 	{"GET", "/api/canon/proposals", ""},
 	{"GET", "/api/canon/proposals/1", ""},
+	{"GET", "/api/canon/proposals/1/impact", ""},
 	{"POST", "/api/canon/proposals", `{}`},
 	{"POST", "/api/canon/proposals/1/approve", `{"reason":"ok"}`},
 	{"POST", "/api/canon/proposals/1/reject", `{"reason":"no"}`},

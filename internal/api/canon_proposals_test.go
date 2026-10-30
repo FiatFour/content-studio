@@ -95,3 +95,59 @@ func TestCanonProposalHTTPFlow(t *testing.T) {
 		t.Fatalf("unknown: %d", r.code)
 	}
 }
+
+func TestCanonImpactHTTP(t *testing.T) {
+	g := newRig(t)
+	tok := g.sessionToken(t)
+	post := func(path, body string) resp { return g.do(t, "POST", path, body, opt{token: tok}) }
+	count := func(q string) int {
+		var n int
+		if err := g.db.QueryRow(context.Background(), q).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	// Two characters exist (owner path) and a pending relationship proposal names an unknown one.
+	for _, slug := range []string{"ann", "bob"} {
+		if r := post("/api/characters", fmt.Sprintf(`{"slug":%q,"name":%q,"appearance":"short black hair","voice":"bright voice"}`, slug, slug)); r.code != 201 && r.code != 200 {
+			t.Fatalf("character: %d %s", r.code, r.body)
+		}
+	}
+	r := post("/api/canon/proposals", `{"kind":"relationship.add","payload":{"from":"ann","to":"zed","type":"friend"}}`)
+	if r.code != 201 {
+		t.Fatalf("create: %d %s", r.code, r.body)
+	}
+	id := int64(r.json()["id"].(float64))
+	path := fmt.Sprintf("/api/canon/proposals/%d/impact", id)
+
+	if r := g.do(t, "GET", path, "", opt{}); r.code != 401 {
+		t.Fatalf("no session: %d", r.code)
+	}
+	before := count(`SELECT count(*) FROM audit_log`)
+	r = g.do(t, "GET", path, "", opt{token: tok})
+	if r.code != 200 {
+		t.Fatalf("impact: %d %s", r.code, r.body)
+	}
+	j := r.json()
+	if j["advisory"] != true || j["status"] != "proposed" {
+		t.Fatalf("report: %s", r.body)
+	}
+	found := false
+	for _, f := range j["findings"].([]any) {
+		m := f.(map[string]any)
+		found = found || m["code"] == "character.missing" && m["severity"] == "conflict"
+	}
+	if !found {
+		t.Fatalf("missing conflict finding: %s", r.body)
+	}
+	if count(`SELECT count(*) FROM canon_proposal_decisions`) != 0 || count(`SELECT count(*) FROM audit_log`) != before {
+		t.Fatal("impact check decided or wrote something")
+	}
+	if r := g.do(t, "GET", "/api/canon/proposals/99999/impact", "", opt{token: tok}); r.code != 404 {
+		t.Fatalf("unknown: %d", r.code)
+	}
+	// Read-only: the route accepts no write method.
+	if r := g.do(t, "POST", path, `{}`, opt{token: tok}); r.code == 200 || r.code == 201 {
+		t.Fatalf("impact accepted a POST: %d", r.code)
+	}
+}

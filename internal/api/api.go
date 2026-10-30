@@ -79,6 +79,7 @@ func (s *Server) Echo() *echo.Echo {
 	a.GET("/audit", s.listAudit)
 	a.GET("/canon/proposals", s.listCanonProposals)
 	a.GET("/canon/proposals/:id", s.getCanonProposal)
+	a.GET("/canon/proposals/:id/impact", s.getCanonImpact)
 
 	a.PUT("/settings", s.putSettings)
 	a.POST("/episodes", s.createEpisode)

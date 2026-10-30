@@ -101,6 +101,24 @@ func (s *Server) getCanonProposal(c echo.Context) error {
 	return c.JSON(http.StatusOK, p)
 }
 
+// getCanonImpact returns the advisory deterministic checks for one proposal. Read-only: it never
+// approves, rejects or blocks anything.
+func (s *Server) getCanonImpact(c echo.Context) error {
+	id, err := idParam(c)
+	if err != nil {
+		return err
+	}
+	projectID, err := s.seriesProjectID(c)
+	if err != nil {
+		return err
+	}
+	rep, err := canon.CheckProposal(c.Request().Context(), s.DB, projectID, id)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, rep)
+}
+
 func (s *Server) decideCanonProposal(approve bool) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		id, err := idParam(c)
