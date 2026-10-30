@@ -32,7 +32,7 @@ Rules:
 - Validation: valid UTF-8; CRLF normalized to LF; no control characters except newline and tab (NUL, ESC, bare CR, C1 refused); text at most 200 KB (413), at most 20 sources per episode (409; new versions still allowed), title 1 to 120 characters without control characters, citation at most 500. Constants live in `internal/api/sources.go`.
 - Audit: `source.create` / `source.version` rows are written in the same transaction as the artifact; detail holds scalars only (episode id, source id, version, sha prefix, size), never the text, title or citation. If the audit insert fails, the artifact row rolls back and the file is removed.
 - UI: a Sources card on the episode page, shown only for `knowledge_shorts`; all text is rendered as React text. No such episode can be created in the UI yet (the profile is not runnable); verified with seeded data.
-- Limitations: no source deletion or archiving; claims that cite sources and the quote-in-source check come later; the file of a source is not re-hashed on read.
+- Limitations: no source deletion or archiving; the claim script stage (T4) cites sources by item key and checks quotes against the latest version only (see product.md); the file of a source is not re-hashed on read.
 
 ## Render spec
 The video is described by a versioned JSON timeline, then executed by FFmpeg. Don't hardcode scenes into one giant command.
