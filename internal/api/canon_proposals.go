@@ -33,7 +33,7 @@ func canonErr(err error) error {
 // seriesProjectID returns the series project, or 0 when none exists yet.
 func (s *Server) seriesProjectID(c echo.Context) (int64, error) {
 	var id int64
-	err := s.DB.QueryRow(c.Request().Context(), `SELECT id FROM projects WHERE profile = $1 ORDER BY id LIMIT 1`, pipeline.FictionalSeries.Profile).Scan(&id)
+	err := s.DB.QueryRow(c.Request().Context(), `SELECT id FROM projects WHERE profile = $1 ORDER BY id LIMIT 1`, pipeline.FictionalSeriesID).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, nil
 	}

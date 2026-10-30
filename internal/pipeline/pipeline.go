@@ -19,15 +19,6 @@ import (
 	"github.com/fiat/content-studio/internal/providers"
 )
 
-// FictionalSeries is the M1a profile: plain data, as product.md asks until a second profile exists.
-var FictionalSeries = jobs.Plan{
-	Profile:  "fictional_series",
-	Full:     []string{"script", "tts", "images", "subtitles", "render", "qa"},
-	Rerender: []string{"render", "qa"},
-	// The LLM, image model and voice model each need the GPU; render and qa use CPU (ffmpeg).
-	Resources: map[string]string{"script": "gpu", "tts": "gpu", "images": "gpu"},
-}
-
 type Settings struct {
 	ImageWidth, ImageHeight int
 	OutWidth, OutHeight     int
@@ -62,17 +53,8 @@ func resolve[T any](d *Deps, task providers.Task) (T, error) {
 	return p, nil
 }
 
-// Stages wires every stage of the profile to its implementation.
-func (d *Deps) Stages() map[string]jobs.Stage {
-	return map[string]jobs.Stage{
-		"script":    &scriptStage{d},
-		"images":    &imagesStage{d},
-		"tts":       &ttsStage{d},
-		"subtitles": &subtitlesStage{d},
-		"render":    &renderStage{d},
-		"qa":        &qaStage{d},
-	}
-}
+// Stages wires every stage of the Fictional Series profile to its implementation.
+func (d *Deps) Stages() map[string]jobs.Stage { return fictionalSeries{}.Stages(d) }
 
 type Episode struct {
 	ID, ProjectID   int64

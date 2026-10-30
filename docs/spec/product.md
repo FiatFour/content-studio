@@ -49,6 +49,8 @@ A profile defines:
 
 Until M5, implement profile config as plain data plus a small Go interface. Don't build a generic workflow engine ahead of the second profile.
 
+**Status (M5 T1):** `internal/pipeline/profile.go` holds the abstraction. `Spec` is plain data: id, stage list per run kind (`full`, `rerender`), resource map, script schema name, duration range, QA rule set name, and review config. `Profile` is a small interface (`Spec()` plus `Stages(*Deps)`, the stage implementations), and `Profiles` is a registry (`Get` by id, `IDs`). Fictional Series is the first profile; `jobs.Plan` is derived from its spec (`Spec.Plan()`), with identical values to before. Not included on purpose: no workflow engine, no DB schema change (T2), no second profile, no research, voice or visual-style settings yet, and the script schema, QA rules and `MaxAutoRewrites` are still enforced by the shared code (the spec names them; it does not yet drive them). Canon and project lookups remain Fictional Series specific.
+
 ## Agent roles
 These are **logical roles**, not separate running models. Most map to a pipeline stage that calls one shared LLM runtime with a different prompt and schema.
 

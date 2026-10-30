@@ -68,10 +68,7 @@ func (s *Server) loadRuns(ctx context.Context, episodeID int64, limit int) ([]ru
 		return nil, err
 	}
 	for i := range runs {
-		runs[i].Stages = pipeline.FictionalSeries.Full
-		if runs[i].Kind == "rerender" {
-			runs[i].Stages = pipeline.FictionalSeries.Rerender
-		}
+		runs[i].Stages = pipeline.FictionalSeriesSpec().StagesFor(runs[i].Kind)
 		rows, err := s.DB.Query(ctx, `SELECT id, stage, state, attempt_count, progress_done, progress_total, provider, model, error_class, error_message, wait_reason,
 			started_at, finished_at, updated_at FROM jobs WHERE run_id = $1 ORDER BY seq`, runs[i].ID)
 		if err != nil {
@@ -186,14 +183,15 @@ func (s *Server) createEpisode(c echo.Context) error {
 	if err := bind(c, &req); err != nil {
 		return err
 	}
+	spec := pipeline.FictionalSeriesSpec()
 	req.Title, req.Idea = strings.TrimSpace(req.Title), strings.TrimSpace(req.Idea)
 	switch {
 	case req.Title == "" || utf8.RuneCountInString(req.Title) > 120:
 		return fail(http.StatusBadRequest, "title must be 1 to 120 characters")
 	case utf8.RuneCountInString(req.Idea) < 10 || utf8.RuneCountInString(req.Idea) > 2000:
 		return fail(http.StatusBadRequest, "idea must be 10 to 2000 characters")
-	case req.TargetDurationS < 60 || req.TargetDurationS > 120:
-		return fail(http.StatusBadRequest, "target length must be 60 to 120 seconds")
+	case req.TargetDurationS < spec.MinDurationS || req.TargetDurationS > spec.MaxDurationS:
+		return fail(http.StatusBadRequest, fmt.Sprintf("target length must be %d to %d seconds", spec.MinDurationS, spec.MaxDurationS))
 	}
 	inStory, err := parseDate("in_story_date", req.InStoryDate)
 	if err != nil {
