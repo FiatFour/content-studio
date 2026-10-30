@@ -247,8 +247,9 @@ func TestKnowledgeShortsMediaStagesDoNotMakeItRunnable(t *testing.T) {
 			t.Errorf("planned stage %q has no implementation", st)
 		}
 	}
-	if impl["qa"] != nil {
-		t.Error("qa belongs to T6")
+	// T6 edit: this used to assert qa was absent; the shared qa stage is now planned and implemented.
+	if impl["qa"] == nil || spec.PlannedStages[len(spec.PlannedStages)-1] != "qa" {
+		t.Error("qa must be the last planned stage and have an implementation")
 	}
 	for st, res := range map[string]string{"script": "gpu", "tts": "gpu", "images": "gpu"} {
 		if spec.Resources[st] != res {

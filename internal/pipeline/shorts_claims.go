@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -156,6 +157,18 @@ func (c ClaimCheck) feedback() string {
 	return strings.Join(parts, "; ")
 }
 
+// shortsOverheadMS is the part of a short that is not narration, from the constants the timeline
+// uses: the lead and tail, the title card and the Sources card (emptyShotMS each, they carry no
+// line) and one shotGapMS between each pair of the beats+2 shots.
+func shortsOverheadMS(beats int) int64 {
+	return int64(leadMS+tailMS+2*emptyShotMS) + int64(beats+1)*shotGapMS
+}
+
+// shortsSpeechSeconds is the time left for narration once the cards and gaps are taken from the target.
+func shortsSpeechSeconds(targetSeconds, beats int) float64 {
+	return math.Max(float64(int64(targetSeconds)*1000-shortsOverheadMS(beats))/1000, 1)
+}
+
 // ValidateShortsScript parses untrusted model output, checks it against the schema, and checks the
 // Thai narration length against the episode target with the same characters-per-second bounds the
 // Fictional Series script uses. The claim check is separate (CheckShortsClaims) because it needs the sources.
@@ -178,12 +191,13 @@ func ValidateShortsScript(raw []byte, targetSeconds int) (*ShortsScript, error) 
 		}
 		chars += utf8.RuneCountInString(b.Narration)
 	}
-	minChars, maxChars := int(float64(targetSeconds)*minCharsPerSecond), int(float64(targetSeconds)*maxCharsPerSecond)
+	speech := shortsSpeechSeconds(targetSeconds, len(s.Beats))
+	minChars, maxChars := int(speech*minCharsPerSecond), int(speech*maxCharsPerSecond)
 	if chars < minChars {
-		return nil, fmt.Errorf("narration has only %d characters but a %d s short needs at least %d. Add about %d more characters", chars, targetSeconds, minChars, minChars-chars)
+		return nil, fmt.Errorf("narration has only %d characters but a %d s short with %d beats needs at least %d (the title card, the Sources card and the pauses between beats take the rest of the time). Add about %d more characters", chars, targetSeconds, len(s.Beats), minChars, minChars-chars)
 	}
 	if chars > maxChars {
-		return nil, fmt.Errorf("narration has %d characters but a %d s short allows at most %d. Remove about %d characters", chars, targetSeconds, maxChars, chars-maxChars)
+		return nil, fmt.Errorf("narration has %d characters but a %d s short with %d beats allows at most %d (the title card, the Sources card and the pauses between beats take the rest of the time). Remove about %d characters", chars, targetSeconds, len(s.Beats), maxChars, chars-maxChars)
 	}
 	return &s, nil
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, ApiError, contentUrl, type EpisodeSummary, type Review } from "../api";
+import { api, ApiError, contentUrl, type EpisodeSummary, type Review, type ShortsReview } from "../api";
 import { usePoll } from "../hooks";
 import { useI18n, type Key } from "../i18n";
 import { Card, StateBadge, fmtBytes, fmtTime } from "../ui";
@@ -68,6 +68,7 @@ export function ReviewPage({ id }: { id: number }) {
           <span className="w-full text-sm">{q.reason}</span>{!q.passed && q.suggested_fix && <span className="w-full text-sm text-amber">{t("review.qa.fix")}: {q.suggested_fix}</span>}</li>)}</ul>
         <p className="muted mt-3 text-xs">{t("review.qa.aiNote")}</p>
       </Card>
+      {r.data.shorts && <ShortsCard s={r.data.shorts} />}
       <Card>
         <div role="tablist" className="mb-3 flex gap-2">{(["script", "srt"] as const).map((k) => <button key={k} role="tab" aria-selected={tab === k} className="btn" style={{ borderColor: tab === k ? "var(--color-blue)" : undefined }} onClick={() => setTab(k)}>{t(`review.tab.${k}` as Key)}</button>)}</div>
         <pre className="inner max-h-96 overflow-auto whitespace-pre-wrap text-sm">{(tab === "script" ? (script && prettyJSON(script)) : srt?.replaceAll("​", "")) ?? t("app.loading")}</pre>
@@ -98,6 +99,28 @@ export function ReviewPage({ id }: { id: number }) {
         <div className="mono text-xs">{d.sha256.slice(0, 12)}</div>{d.notes && <div>{d.notes}</div>}</li>)}</ul>}</Card>
     </div>
   </div>;
+}
+
+// ShortsCard lists, as plain text, what a Knowledge Shorts video rests on. It only shows data; it has no
+// button and cannot approve anything. Source titles and quotes are owner or model text: React text only.
+function ShortsCard({ s }: { s: ShortsReview }) {
+  const { t } = useI18n();
+  const cc = s.claim_check;
+  return <Card title={t("review.shorts.title")}>
+    {s.unreadable && <p role="alert" className="mb-2 text-sm text-red">{t("review.shorts.unreadable", { why: s.unreadable })}</p>}
+    <h3 className="font-semibold">{t("review.shorts.sources")}</h3>
+    <ul className="mb-3 flex flex-col gap-1">{s.sources.map((x) => <li key={x.artifact_id} className="mono break-all text-xs">{t("review.shorts.sourceLine", { id: x.source_id, title: x.title, n: x.version, sha: x.sha256.slice(0, 12) })}</li>)}</ul>
+    <h3 className="font-semibold">{t("review.shorts.claims")}</h3>
+    {s.claims.length === 0 ? <p className="muted text-sm">{t("review.shorts.noClaims")}</p> :
+      <ul className="mb-3 flex flex-col gap-2">{s.claims.map((c) => <li key={c.id} className="inner text-sm">
+        <strong className="mono">{c.id}</strong> · <span>{c.text}</span>
+        <div className="muted mono text-xs">{t("review.shorts.claimSource", { id: c.source_id })}{s.claim_beats[c.id] ? ` · ${t("review.shorts.claimBeats", { beats: s.claim_beats[c.id].join(", ") })}` : ""}</div>
+        <div className="text-xs">{t("review.shorts.quote")}: <q>{c.quote}</q></div></li>)}</ul>}
+    <h3 className="font-semibold">{t("review.shorts.check")}</h3>
+    <p className={`mono text-sm ${cc?.ok ? "text-green" : "text-red"}`}>{cc == null ? t("review.shorts.checkNone") : cc.ok ? t("review.shorts.checkOk", { claims: cc.claims, beats: cc.beats }) : t("review.shorts.checkFail", { n: cc.failures.length })}</p>
+    {cc && !cc.ok && <ul className="text-sm">{cc.failures.map((f, i) => <li key={i}>{f.message}</li>)}</ul>}
+    <p className="muted mt-3 text-xs">{t("review.shorts.note")}</p>
+  </Card>;
 }
 
 function prettyJSON(s: string): string {

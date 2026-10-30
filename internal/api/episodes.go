@@ -346,10 +346,21 @@ func (s *Server) videoReview(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"video": v, "episode_id": episodeID, "qa": qas, "decisions": decisions, "exports": exports,
 		"script_artifact_id": scriptID, "subtitles_artifact_id": subsID, "versions": versions,
-	})
+	}
+	if scriptID != nil {
+		// Only a Knowledge Shorts script adds the sources and claims; any other response is unchanged.
+		sr, err := s.loadShortsReview(ctx, *scriptID)
+		if err != nil {
+			return err
+		}
+		if sr != nil {
+			resp["shorts"] = sr
+		}
+	}
+	return c.JSON(http.StatusOK, resp)
 }
 
 func (s *Server) decide(c echo.Context) error {

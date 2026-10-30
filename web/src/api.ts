@@ -49,8 +49,14 @@ export type VideoVersion = {
 };
 export type ArtifactRow = { id: number; type: string; item_key: string; version: number; sha256: string; validation_status: string; provider: string; model: string; meta: Record<string, unknown> };
 export type QA = { artifact_id: number; created_at: string; rule: string; rule_version: number; severity: "blocking" | "warning" | "advisory"; passed: boolean; reason: string; suggested_fix: string };
+export type ShortsReview = {
+  sources: { source_id: string; artifact_id: number; title: string; version: number; sha256: string }[];
+  claims: { id: string; text: string; source_id: string; quote: string }[];
+  claim_beats: Record<string, number[]>; beats: number; unreadable?: string;
+  claim_check: { ok: boolean; claims: number; beats: number; failures: { code: string; message: string }[] } | null;
+};
 export type Review = {
-  video: VideoVersion; episode_id: number; qa: QA[];
+  video: VideoVersion; episode_id: number; qa: QA[]; shorts?: ShortsReview;
   decisions: { id: number; sha256: string; decision: string; notes: string; reviewer: string; created_at: string }[];
   exports: { id: number; file_name: string; sha256: string; created_at: string }[];
   script_artifact_id: number | null; subtitles_artifact_id: number | null; versions: VideoVersion[];
