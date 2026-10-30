@@ -240,6 +240,49 @@ flows.auth = async function (page, context) {
   await shot("5-session-expired");
 };
 
+// Knowledge Shorts sources. No such episode can be created in the UI (the profile is not runnable), so the
+// project and episode are seeded by SQL into the throwaway database. Then the user path: paste, save, add a version.
+flows.sources = async function (page) {
+  const sql = (q) => execFileSync("docker", ["exec", "studio-pg", "psql", "-U", "studio", "-d", env.DB, "-tAc", q], { encoding: "utf8" }).trim();
+  const eid = sql("with p as (insert into projects (name, profile) values ('Knowledge Shorts', 'knowledge_shorts') returning id) insert into episodes (project_id, number, title, idea, target_duration_s) select id, 1, 'seeded ks episode', 'seeded idea text', 45 from p returning id").split("\n")[0];
+  const fs = sql("select id from episodes where title <> 'seeded ks episode' limit 1");
+  await api("/settings", { method: "PUT", body: JSON.stringify({ ui_lang: "en" }) });
+  await page.goto(`${env.URL}/#/episodes/${eid}`);
+  await expectVisible("Sources card is shown for knowledge_shorts", page.getByRole("heading", { name: t("en", "sources.title") }));
+  await expectVisible("empty state", page.getByText(t("en", "sources.empty")));
+  const evil = "<img src=x onerror=alert(1)> & <b>bold</b>";
+  await page.getByLabel(t("en", "sources.fTitle")).fill("Water facts");
+  await page.getByLabel(t("en", "sources.fCitation")).fill("Textbook p. 4 " + evil);
+  await page.getByLabel(t("en", "sources.fText")).fill("Water boils at 100 C at sea level.\n" + evil);
+  await page.getByRole("button", { name: t("en", "sources.add"), exact: true }).click();
+  await expectVisible("saved message", page.getByText(t("en", "sources.saved", { id: "s1", n: 1 })));
+  await expectVisible("list row s1", page.getByText("s1", { exact: true }));
+  await page.getByRole("button", { name: t("en", "sources.view") }).click();
+  await expectVisible("text shown as text (markup visible literally)", page.locator("pre", { hasText: "<img src=x onerror=alert(1)>" }));
+  check("no img element was injected", (await page.locator("img[src='x']").count()) === 0);
+  await page.getByRole("button", { name: t("en", "sources.newVersion") }).click();
+  await expectVisible("form seeded for a new version", page.getByText(t("en", "sources.editing", { id: "s1" })));
+  await page.getByLabel(t("en", "sources.fText")).fill("Water boils at 100 C at sea level. Revised.");
+  await page.getByRole("button", { name: t("en", "sources.addVersion", { id: "s1" }) }).click();
+  await expectVisible("version 2 saved", page.getByText(t("en", "sources.saved", { id: "s1", n: 2 })));
+  const list = await api(`/episodes/${eid}/sources`);
+  const s1 = list.body?.sources?.[0];
+  check("backend: one source with 2 versions, latest v2", list.body?.sources?.length === 1 && s1?.version === 2 && s1?.versions?.length === 2, JSON.stringify({ n: list.body?.sources?.length, v: s1?.version }));
+  check("backend: audit rows source.create + source.version", sql(`select string_agg(action, ',' order by id) from audit_log where action like 'source.%' and detail->>'episode_id' = '${eid}'`) === "source.create,source.version");
+  check("backend: audit detail has no text", !sql("select string_agg(detail::text, ' ') from audit_log where action like 'source.%'").includes("Water"));
+  await page.screenshot({ path: `${evidence}/sources.png`, fullPage: true });
+  if (fs) {
+    await page.goto(`${env.URL}/#/episodes/${fs}`);
+    await page.waitForTimeout(1500);
+    check("no Sources card on a fictional_series episode", (await page.getByRole("heading", { name: t("en", "sources.title") }).count()) === 0);
+  }
+  await api("/settings", { method: "PUT", body: JSON.stringify({ ui_lang: "th" }) });
+  await page.goto(`${env.URL}/#/episodes/${eid}`);
+  await page.reload();
+  await expectVisible("Thai title", page.getByRole("heading", { name: t("th", "sources.title") }));
+  await page.screenshot({ path: `${evidence}/sources-th.png`, fullPage: true });
+};
+
 if (!flows[flow]) { console.error(`unknown flow ${flow}; choose ${Object.keys(flows).join(" | ")}`); process.exit(2); }
 const browser = await chromium.launch();
 const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });

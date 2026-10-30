@@ -4,6 +4,7 @@ import { api, ApiError, contentUrl, type ArtifactRow, type Character, type Episo
 import { usePoll } from "../hooks";
 import { useI18n, type Key } from "../i18n";
 import { ErrorExplain, JobPanel } from "../JobPanel";
+import { SourcesCard } from "../SourcesCard";
 import { Bar, Card, StateBadge, agentColor, fmtBytes, fmtTime } from "../ui";
 
 type Detail = {
@@ -77,6 +78,7 @@ export function EpisodeDetail({ id }: { id: number }) {
     <Card><h1 className="font-display text-2xl font-extrabold">{t("episodes.episode", { n: e.number })} · {e.title}</h1>
       <p className="muted mt-1"><strong>{t("episode.idea")}:</strong> {e.idea}</p><p className="muted text-sm">{t(profileLabel(e.profile))} · {t("episodes.target", { s: e.target_duration_s })}</p></Card>
     <CanonCard id={e.id} inStoryDate={e.in_story_date} summary={summary} />
+    {e.profile === "knowledge_shorts" && <SourcesCard episodeId={e.id} />}
     {run && <Card title={<span className="flex flex-wrap items-center gap-3">{t("episode.stages")} <StateBadge state={run.state} /> <span className="muted text-sm">{t(`run.${run.kind}` as Key)} #{run.id}</span></span>}>
       <ol className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">{run.stages.map((s) => { const j = run.jobs.find((x) => x.stage === s);
         return <li key={s} className="inner" style={{ borderTop: `4px solid ${agentColor[s]}` }}>

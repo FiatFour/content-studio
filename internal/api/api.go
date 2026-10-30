@@ -71,6 +71,7 @@ func (s *Server) Echo() *echo.Echo {
 	a.GET("/episodes/:id", s.getEpisode)
 	a.GET("/runs/:id/artifacts", s.runArtifacts)
 	a.GET("/episodes/:id/artifact-history", s.artifactHistory)
+	a.GET("/episodes/:id/sources", s.listSources)
 	a.GET("/artifacts/compare", s.compareArtifacts)
 	a.GET("/jobs/:id", s.getJob)
 	a.GET("/artifacts/:id/content", s.artifactContent)
@@ -91,6 +92,8 @@ func (s *Server) Echo() *echo.Echo {
 	a.PUT("/episodes/:id/summary", s.putSummary)
 	a.PUT("/episodes/:id/in-story-date", s.putInStoryDate)
 	a.POST("/episodes/:id/rerender", s.rerender)
+	a.POST("/episodes/:id/sources", s.createSource)
+	a.POST("/episodes/:id/sources/:source/versions", s.versionSource)
 	a.POST("/runs/:id/cancel", s.cancelRun)
 	a.POST("/runs/:id/retry", s.retryRun)
 	a.POST("/videos/:id/decision", s.decide)
@@ -306,7 +309,7 @@ func (s *Server) artifactContent(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	ct := map[string]string{"json": "application/json", "srt": "text/plain; charset=utf-8", "png": "image/png", "wav": "audio/wav", "mp4": "video/mp4"}[strings.TrimPrefix(filepath.Ext(rel), ".")]
+	ct := map[string]string{"json": "application/json", "srt": "text/plain; charset=utf-8", "txt": "text/plain; charset=utf-8", "png": "image/png", "wav": "audio/wav", "mp4": "video/mp4"}[strings.TrimPrefix(filepath.Ext(rel), ".")]
 	c.Response().Header().Set("Content-Type", ct)
 	c.Response().Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 	http.ServeContent(c.Response(), c.Request(), filepath.Base(rel), st.ModTime(), f)

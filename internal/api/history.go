@@ -55,7 +55,7 @@ func (s *Server) artifactHistory(c echo.Context) error {
 		return err
 	}
 	typ := c.QueryParam("type")
-	rows, err := s.DB.Query(ctx, `SELECT a.id, a.run_id, a.type, a.item_key, a.version, a.sha256, a.size_bytes, a.validation_status,
+	rows, err := s.DB.Query(ctx, `SELECT a.id, coalesce(a.run_id, 0), a.type, a.item_key, a.version, a.sha256, a.size_bytes, a.validation_status,
 			a.provider, a.model, a.created_at,
 			coalesce((SELECT array_agg(p.parent_id ORDER BY p.parent_id) FROM artifact_parents p WHERE p.artifact_id = a.id), '{}'),
 			coalesce((SELECT ap.decision FROM approvals ap WHERE ap.artifact_id = a.id AND ap.sha256 = a.sha256 ORDER BY ap.id DESC LIMIT 1), 'none')

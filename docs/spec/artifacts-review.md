@@ -24,6 +24,16 @@ Rules:
 - UI: `#/history/:episodeId` and `#/compare/:a/:b`. Artifact content is rendered as text only. These views have no approve, export or re-render controls; those stay on the review screen.
 - Limitations: array diffs compare by index (an inserted shot shifts later entries); no word-level text diff.
 
+### Sources (Knowledge Shorts, D15)
+- A source is owner-pasted plain text, stored as artifact type `source` (file `.txt`) attached to an episode whose project profile is `knowledge_shorts`; any other profile is refused with 409. Nothing is fetched, searched or dereferenced: the optional citation note is text only. Title and citation live in the artifact's `meta`.
+- Stable id: the item key `s1`, `s2`, ... (per-episode counter, assigned under the episode advisory lock; sources are never deleted, so ids are never reused). Each edit is a new version of the same item key with the previous version as its `artifact_parents` parent. Rows are immutable (0011 triggers); files are never overwritten.
+- Migration 0019 makes `artifacts.run_id` and `job_id` nullable, with a CHECK that only type `source` may leave them NULL (the owner creates a source, not a stage). Run-based views are unaffected; `artifact-history` reports `run_id` 0 for a source.
+- `GET /api/episodes/:id/sources` (latest version of each source with id, sha256, size, all version ids), `POST /api/episodes/:id/sources` (create), `POST /api/episodes/:id/sources/:source/versions` (new version; an unchanged resubmission is 409). Text is read through `GET /api/artifacts/:id/content` as `text/plain` with `nosniff`.
+- Validation: valid UTF-8; CRLF normalized to LF; no control characters except newline and tab (NUL, ESC, bare CR, C1 refused); text at most 200 KB (413), at most 20 sources per episode (409; new versions still allowed), title 1 to 120 characters without control characters, citation at most 500. Constants live in `internal/api/sources.go`.
+- Audit: `source.create` / `source.version` rows are written in the same transaction as the artifact; detail holds scalars only (episode id, source id, version, sha prefix, size), never the text, title or citation. If the audit insert fails, the artifact row rolls back and the file is removed.
+- UI: a Sources card on the episode page, shown only for `knowledge_shorts`; all text is rendered as React text. No such episode can be created in the UI yet (the profile is not runnable); verified with seeded data.
+- Limitations: no source deletion or archiving; claims that cite sources and the quote-in-source check come later; the file of a source is not re-hashed on read.
+
 ## Render spec
 The video is described by a versioned JSON timeline, then executed by FFmpeg. Don't hardcode scenes into one giant command.
 

@@ -32,3 +32,4 @@ Maintained source for verifying the user-facing behavior of the studio web UI. R
 - [Discord notifications](./notifications.md): Providers & budget screen, toggles, test message, masked suffix. Flow `notifications`.
 - Resource limits and task policies (same screen `#/providers`): flow `resources` checks the confirm step above limit 1, persistence, audit rows and the read-only policy table.
 - [Review, approve and export](./review-and-export.md): NOT yet driven by any flow; needs a video that passed QA.
+- Knowledge Shorts sources (`#/episodes/<id>`, Sources card): flow `sources` seeds a knowledge_shorts project and episode by SQL (no UI path creates one yet), pastes a source with markup in it, checks it is shown as text, adds a version, and reads back the API and audit rows.
