@@ -5,7 +5,7 @@ The app opens in Thai, lists live pages as links, marks later-milestone pages as
 ## Sub-features
 
 - `shell-default-th` opens in Thai.
-- `shell-inert-nav` shows AI agent tower (M4), Providers & budget (M2) and Library (M3) as non-links tagged `Mx · <Not implemented>`.
+- `shell-inert-nav` shows AI agent tower (M4) and Library (M3) as non-links tagged `Mx · <Not implemented>`.
 - `shell-lang-switch` switches to English with the `EN` button.
 - `shell-lang-persist` keeps English after a reload, from the backend setting.
 
@@ -21,7 +21,7 @@ Preconditions:
 - `doctor.sh $E` printed `doctor ok`.
 
 - **Default Thai.** `node scripts/drive.mjs $E shell`. The navigation shows the Thai `menu.episodes` link.
-- **Inert items.** The same run asserts three items are not links and show their tag plus the Thai "Not implemented" text.
+- **Inert items.** The same run asserts two items are not links and show their tag plus the Thai "Not implemented" text.
 - **Switch and persist.** The run presses `EN`, reloads, and reads `GET /api/settings`: `ui_lang` is `en`.
 
 ## Gotchas

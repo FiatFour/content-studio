@@ -50,7 +50,7 @@ Each event type can be toggled. The settings are stored in the backend and chang
 - Message bodies for each event contain no secrets, file paths or raw stack traces.
 
 ## Implementation status (backend, issue #15)
-Backend only; the Providers & budget screen UI is not built yet.
+Backend (issue #15) and the notifications UI (issue #42, route `#/providers`) are built. The UI shows webhook status (only the masked suffix the API returns), event toggles (events with `implemented: false` are disabled and labelled "Not implemented"), a test-message button that shows the real HTTP result or the 409 "not configured" state, and the 20 most recent deliveries. The rest of the Providers & budget screen (budget, providers table, task policies) is not built and says so.
 
 - **Webhook URL** comes from the env var `STUDIO_DISCORD_WEBHOOK_URL` (there is no secret file in the codebase yet). It is validated at startup (https, host `discord.com` or `discordapp.com`, path `/api/webhooks/<id>/<token>`, no port, userinfo or query) as SSRF protection; redirects are never followed. It is never stored in the database. The API returns only `configured` and the last 4 characters (`suffix`). Errors from the HTTP client are reduced to a class (`timeout`, `network error`, `discord returned HTTP n`) because they otherwise embed the URL.
 - **API:** `GET /api/notifications` (configured, suffix, event toggles with `implemented`, last delivery, 20 recent deliveries), `PUT /api/notifications/events/:event` (`{"enabled": bool}`), `POST /api/notifications/test` (labelled test, returns the real HTTP result; 409 `not configured` when unset). There is no inbound endpoint of any kind.

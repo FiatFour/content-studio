@@ -1,5 +1,5 @@
 // Drives the isolated studio UI in headless Chromium the way a user would, and writes evidence.
-// usage: node drive.mjs <env file> <flow>      flows: shell | create-episode | auth
+// usage: node drive.mjs <env file> <flow>      flows: shell | create-episode | notifications | auth
 // Every visible string comes from web/src/i18n/{th,en}.json, so a renamed label breaks the flow
 // loudly instead of silently passing. Exit code 0 only if every assertion held.
 import { createRequire } from "node:module";
@@ -32,7 +32,7 @@ const flows = {
     await api("/settings", { method: "PUT", body: JSON.stringify({ ui_lang: "th" }) });
     await page.goto(env.URL);
     await expectVisible("Thai nav link", page.getByRole("navigation", { name: "menu" }).getByRole("link", { name: t("th", "menu.episodes") }));
-    for (const [key, tag] of [["menu.tower", "menu.tag.m4"], ["menu.providers", "menu.tag.m2"], ["menu.library", "menu.tag.m3"]]) {
+    for (const [key, tag] of [["menu.tower", "menu.tag.m4"], ["menu.library", "menu.tag.m3"]]) {
       const nav = page.getByRole("navigation", { name: "menu" });
       check(`${key} is not a link`, (await nav.getByRole("link", { name: t("th", key) }).count()) === 0);
       const label = `${t("th", tag)} · ${t("th", "app.notImplemented")}`;
@@ -65,6 +65,53 @@ const flows = {
     check("backend run is running with a queued script job", ep?.latest_run?.state === "running" && ep.latest_run.jobs?.[0]?.stage === "script" && ep.latest_run.jobs[0].state === "queued", JSON.stringify(ep?.latest_run?.jobs?.[0]));
     await page.goto(`${env.URL}/#/episodes`);
     await expectVisible("episode listed after reload", page.getByRole("link", { name: new RegExp(title) }));
+  },
+
+  // Providers & budget: the Discord notifications card against real backend state. The webhook validator only
+  // accepts discord.com URLs, so a local fake receiver cannot be used: an unconfigured instance proves the
+  // "not configured" / 409 path, and an instance launched with a fake-but-valid URL proves the masked suffix
+  // (its test button is NOT pressed, because that would call the real discord.com).
+  async notifications(page) {
+    await api("/settings", { method: "PUT", body: JSON.stringify({ ui_lang: "th" }) });
+    const sql = (q) => execFileSync("docker", ["exec", "studio-pg", "psql", "-U", "studio", "-d", env.DB, "-tAc", q], { encoding: "utf8" }).trim();
+    const before = (await api("/notifications")).body;
+    await page.goto(`${env.URL}/#/providers`);
+    await expectVisible("providers page heading", page.getByRole("heading", { name: t("th", "providers.title") }));
+    await expectVisible("notifications card", page.getByRole("heading", { name: t("th", "notif.title") }));
+    if (before.configured) {
+      await expectVisible("configured with masked suffix", page.getByText(`${t("th", "notif.configured")} (\u2026${before.suffix})`, { exact: true }));
+      const html = await page.content();
+      check("no webhook URL anywhere in the page", !/discord\.com\/api\/webhooks|api\/webhooks/.test(html));
+      check("API returns only a 4 character suffix", before.suffix.length === 4 && !JSON.stringify(before).includes("webhooks"));
+    } else {
+      await expectVisible("not configured is shown", page.getByText(t("th", "notif.notConfigured"), { exact: true }));
+    }
+    // Unimplemented events are disabled and labelled.
+    const unimpl = before.events.filter((e) => !e.implemented);
+    check("backend lists unimplemented events", unimpl.length > 0);
+    for (const e of unimpl) check(`${e.event} checkbox disabled`, await page.getByLabel(t("th", `notif.event.${e.event}`)).isDisabled());
+    check("Not implemented labels shown", (await page.getByText(t("th", "app.notImplemented"), { exact: true }).count()) >= unimpl.length);
+    // Toggle an implemented event off and on through the UI; read it back from the backend and the audit log.
+    const box = page.getByLabel(t("th", "notif.event.job_failed"));
+    const was = await box.isChecked();
+    await box.click();
+    await page.waitForFunction(async ([w]) => (await (await fetch("/api/notifications")).json()).events.find((e) => e.event === "job_failed").enabled === !w, [was]);
+    const after = (await api("/notifications")).body.events.find((e) => e.event === "job_failed").enabled;
+    check("toggle persisted in the backend", after === !was, `was ${was}, now ${after}`);
+    check("toggle audited", sql("select count(*) from audit_log where action = 'notification.toggle'") === "1");
+    await page.screenshot({ path: `${evidence}/1-toggled.png`, fullPage: true });
+    await box.click();
+    await page.waitForFunction(async ([w]) => (await (await fetch("/api/notifications")).json()).events.find((e) => e.event === "job_failed").enabled === w, [was]);
+    check("toggled back", (await api("/notifications")).body.events.find((e) => e.event === "job_failed").enabled === was);
+    if (!before.configured) {
+      const direct = await api("/notifications/test", { method: "POST", body: "{}" });
+      check("backend answers 409 for the test message", direct.status === 409, String(direct.status));
+      await page.getByRole("button", { name: t("th", "notif.test") }).click();
+      await expectVisible("UI shows the not-configured result", page.getByText(t("th", "notif.testNotConfigured")));
+      check("nothing recorded as delivered", sql("select count(*) from notification_deliveries") === "0");
+    }
+    await page.getByRole("button", { name: "EN", exact: true }).click();
+    await expectVisible("English card title", page.getByRole("heading", { name: t("en", "notif.title") }));
   },
 };
 
