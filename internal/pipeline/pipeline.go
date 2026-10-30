@@ -119,6 +119,10 @@ func (d *Deps) loadScript(ctx context.Context, j *jobs.Job) (*Script, artifacts.
 	if err != nil {
 		return nil, a, err
 	}
+	if a.Meta["profile"] == KnowledgeShortsID {
+		s, err := d.shortsScript(ctx, a, data)
+		return s, a, err
+	}
 	var s Script
 	if err := json.Unmarshal(data, &s); err != nil {
 		return nil, a, err

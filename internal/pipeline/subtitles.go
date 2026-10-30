@@ -88,6 +88,10 @@ func (s *subtitlesStage) Run(ctx context.Context, j *jobs.Job, progress func(int
 		cues = append(cues, Cues(l, words)...)
 	}
 
+	if cues, err = addCardCues(ctx, seg, script.Shots(), tl, cues); err != nil {
+		return nil, err
+	}
+
 	out := d.newOutputs(j)
 	parents := append([]int64{scriptArt.ID}, ids(clips)...)
 	tlJSON, err := json.MarshalIndent(tl, "", "  ")

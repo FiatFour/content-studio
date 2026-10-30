@@ -93,12 +93,23 @@ func (s *imagesStage) Run(ctx context.Context, j *jobs.Job, progress func(int, i
 	if strength == 0 {
 		strength = defaultLoraStrength
 	}
+	negative := negativePrompt
+	if script.visual != nil {
+		negative = script.visual.Negative
+	}
 	for i, sh := range shots {
 		progress(i, len(shots))
-		loras, tokens := shotLoras(script, sh, strength)
-		prompt := imagePrompt(script, sh, tokens)
+		var loras []providers.LoraRef
+		var tokens []string
+		var prompt string
+		if script.visual != nil { // Knowledge Shorts: flat infographic style, no character, never a LoRA
+			prompt = shortsImagePrompt(script.visual, sh)
+		} else {
+			loras, tokens = shotLoras(script, sh, strength)
+			prompt = imagePrompt(script, sh, tokens)
+		}
 		seed := j.EpisodeID*1000 + int64(i)
-		data, err := images.Generate(ctx, providers.ImageRequest{Prompt: prompt, Negative: negativePrompt, Seed: seed, Width: w, Height: h, Loras: loras})
+		data, err := images.Generate(ctx, providers.ImageRequest{Prompt: prompt, Negative: negative, Seed: seed, Width: w, Height: h, Loras: loras})
 		if err != nil {
 			return nil, err
 		}
@@ -109,7 +120,7 @@ func (s *imagesStage) Run(ctx context.Context, j *jobs.Job, progress func(int, i
 		if cfg := img.Bounds(); cfg.Dx() != w || cfg.Dy() != h {
 			return nil, jobs.Errorf(jobs.ErrValidationFailed, nil, "shot %d image is %dx%d, expected %dx%d", i+1, cfg.Dx(), cfg.Dy(), w, h)
 		}
-		meta := map[string]any{"prompt": prompt, "negative": negativePrompt, "seed": seed, "width": w, "height": h, "style_version": styleVersion}
+		meta := map[string]any{"prompt": prompt, "negative": negative, "seed": seed, "width": w, "height": h, "style_version": styleVersion}
 		if len(loras) > 0 {
 			meta["loras"] = loras
 			meta["trigger_tokens"] = tokens

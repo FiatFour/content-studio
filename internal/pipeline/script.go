@@ -43,6 +43,9 @@ type Script struct {
 	Title      string      `json:"title"`
 	Characters []Character `json:"characters"`
 	Scenes     []Scene     `json:"scenes"`
+	// visual is set only when the script was adapted from a Knowledge Shorts script (see shortsAsScript).
+	// It switches the images stage to the flat infographic style and turns LoRAs off. It never comes from JSON.
+	visual *VisualSpec
 }
 
 type Character struct {
@@ -65,6 +68,9 @@ type Shot struct {
 	ImagePrompt string `json:"image_prompt"`
 	Camera      string `json:"camera"`
 	Lines       []Line `json:"lines"`
+	// Caption is text shown for a shot that has no spoken line (a title or sources card), through the
+	// subtitle track. Only the Knowledge Shorts adapter sets it; it never comes from JSON.
+	Caption string `json:"-"`
 }
 
 type Line struct {

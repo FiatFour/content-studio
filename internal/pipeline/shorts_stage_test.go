@@ -343,10 +343,11 @@ func rewire(t *testing.T, h *shortsHarness, l providers.LLM) *shortsHarness {
 func TestKnowledgeShortsWithScriptStageIsStillNotRunnable(t *testing.T) {
 	p, _ := pipeline.Profiles.Get(pipeline.KnowledgeShortsID)
 	spec := p.Spec()
-	if len(spec.PlannedStages) != 1 || spec.PlannedStages[0] != "script" {
+	// T5 edit: planned stages grew from {script} to the five stages, and Stages(d) now returns them.
+	if len(spec.PlannedStages) != 5 || spec.PlannedStages[0] != "script" {
 		t.Fatalf("planned stages %v", spec.PlannedStages)
 	}
-	if spec.Runnable() || len(spec.Plan().Full) != 0 || len(p.Stages(&pipeline.Deps{})) != 0 {
-		t.Fatal("knowledge_shorts must stay unrunnable with only its script stage")
+	if spec.Runnable() || len(spec.Plan().Full) != 0 {
+		t.Fatal("knowledge_shorts must stay unrunnable without its qa stage")
 	}
 }

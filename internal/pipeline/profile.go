@@ -26,6 +26,9 @@ type Spec struct {
 	// Stages because the profile is not finished. It is data only: it never makes a profile
 	// runnable, so Runnable stays false until Stages is filled in (M5 T5/T6).
 	PlannedStages []string
+	// Visual is the look and voice of a profile whose script is not a character drama (nil for
+	// Fictional Series). It never makes a profile runnable.
+	Visual *VisualSpec
 }
 
 // ReviewConfig holds review settings a profile may tune. Approval itself is never configurable:
@@ -133,11 +136,36 @@ type knowledgeShorts struct{}
 
 func (knowledgeShorts) Spec() Spec { return knowledgeShortsSpec }
 
-func (knowledgeShorts) Stages(*Deps) map[string]jobs.Stage { return map[string]jobs.Stage{} }
+// Stages implements the planned stages: the Knowledge Shorts script stage (T4) and the shared tts,
+// images, subtitles and render stages (T5). The shared stages read the Shorts script through the
+// adapter in loadScript, so they are not forked. The qa stage arrives with T6.
+func (knowledgeShorts) Stages(d *Deps) map[string]jobs.Stage {
+	return map[string]jobs.Stage{
+		"script":    &shortsScriptStage{d},
+		"tts":       &ttsStage{d},
+		"images":    &imagesStage{d},
+		"subtitles": &subtitlesStage{d},
+		"render":    &renderStage{d},
+	}
+}
 
-// PlannedStages names the script stage (M5 T4, NewKnowledgeShortsScriptStage). Stages stays empty and
-// Stages(d) returns no implementations, so the profile is still refused with 501 until T5/T6 add the rest.
-var knowledgeShortsSpec = Spec{ID: KnowledgeShortsID, MinDurationS: 30, MaxDurationS: 60, PlannedStages: []string{"script"}}
+// PlannedStages is the ordered stage list; Stages stays empty so the profile is still refused with
+// 501 until T6 adds the qa stage and moves this list into Stages["full"]. Resources already say
+// which stages hold the GPU.
+var knowledgeShortsSpec = Spec{
+	ID: KnowledgeShortsID, MinDurationS: 30, MaxDurationS: 60,
+	PlannedStages: []string{"script", "tts", "images", "subtitles", "render"},
+	Resources:     map[string]string{"script": "gpu", "tts": "gpu", "images": "gpu"},
+	Visual: &VisualSpec{
+		StylePrefix: "flat vector infographic illustration, simple shapes, clean flat colors, minimal icons and diagrams, " +
+			"plain light background, no people, vertical framing",
+		Negative: "photo, realistic, 3d render, blurry, text, letters, numbers, caption, watermark, logo, signature, " +
+			"face, person, character, deformed",
+		NarratorVoice:   "calm clear adult narrator, neutral Thai, even pace",
+		SourcesHeading:  "แหล่งข้อมูล",
+		MaxSourceTitles: 4,
+	},
+}
 
 // Profiles is the registry of every content profile the app knows.
 var Profiles = NewRegistry(fictionalSeries{}, knowledgeShorts{})
