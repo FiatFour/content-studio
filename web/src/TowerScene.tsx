@@ -1,11 +1,11 @@
 import { useI18n, type Key } from "./i18n";
 import {
   agentColour, carCentreY, carFloor, CAR_H, floorBox, FLOOR_CODES, FLOOR_H, isKnownState, VIEW, visualOf,
-  type Floor, type TowerState,
+  CONVEYOR_FLOORS, type CrateMotion, type Floor, type TowerMotion, type TowerState,
 } from "./tower";
 
-// The scene is drawn by hand: a thick-outline cutaway building, original shapes only. It is static (no animation,
-// T3 #71) and every lamp, mark and car position comes from the GET /api/tower payload. Side panels (T4 #72) plug in
+// The scene is drawn by hand: a thick-outline cutaway building, original shapes only. Motion (lamp pulse, crates, car travel)
+// comes only from the `motion` flags (tower.ts motionOf, T4 #72); every lamp, mark, crate and car position comes from the GET /api/tower payload. Side panels (T3 #71) plug in
 // next to this component: it only needs the tower payload, a selected floor code and a select callback.
 
 const OUT = "#1B1B1B";
@@ -61,9 +61,35 @@ function DronePad({ label }: { label: string }) {
   </g>;
 }
 
-type SceneProps = { tower: TowerState; frozen?: boolean; selected?: string | null; onSelect?: (code: string) => void };
+type SceneProps = { tower: TowerState; motion?: TowerMotion; frozen?: boolean; selected?: string | null; onSelect?: (code: string) => void };
 
-export function Tower({ tower, frozen = false, selected = null, onSelect }: SceneProps) {
+const NO_MOTION: TowerMotion = { enabled: false, lamps: [], crates: [], car: { floor: "G", travel: false } };
+
+// Moving parts are small HTML layers above the SVG, not SVG children: the browser moves an HTML element on the
+// compositor (transform/opacity only) but repaints the whole SVG for every frame of an animated SVG child.
+const pctX = (n: number) => `${(100 * n) / VIEW.w}%`;
+const pctY = (n: number) => `${(100 * n) / VIEW.h}%`;
+
+// A crate stands on its floor's conveyor: only the payload decides which episodes get one. It slides only while moving.
+function Crate({ c }: { c: CrateMotion }) {
+  const b = floorBox(c.code);
+  return <div data-crate={c.code} data-episode={c.episode.id} data-moving={c.moving || undefined} className="absolute"
+    style={{ left: pctX(512 + c.index * 78), top: pctY(b.y + 48), width: pctX(34), height: pctY(28) }}>
+    <svg viewBox="0 0 34 28" className={`block h-full w-full overflow-visible ${c.moving ? "tower-crate-moving" : ""}`}>
+      <rect x="1.7" y="1.7" width="30.6" height="24.6" rx="3" fill="#D9A760" stroke={OUT} strokeWidth="3.4" />
+      <path d="M1.7 9h30.6" stroke={OUT} strokeWidth="2.5" fill="none" />
+      <text x="17" y="22" textAnchor="middle" fontSize="10" fontWeight="800" fill={INK} stroke="none" fontFamily="var(--font-mono)">{`#${c.episode.number}`}</text>
+    </svg>
+  </div>;
+}
+
+// A ring that pulses around the landing lamp of a floor whose state is `active`.
+function LampPulse({ code }: { code: string }) {
+  const c = code === "Roof" ? 75 : floorBox(code).y + FLOOR_H / 2;
+  return <span data-lamp={code} className="tower-lamp-pulse absolute rounded-full" style={{ left: pctX(958 - 8), top: pctY(c - 8), width: pctX(16), height: pctX(16) }} />;
+}
+
+export function Tower({ tower, motion = NO_MOTION, frozen = false, selected = null, onSelect }: SceneProps) {
   const { t } = useI18n();
   const byCode = new Map(tower.floors.map((f) => [f.code, f]));
   const car = carFloor(tower);
@@ -96,6 +122,11 @@ export function Tower({ tower, frozen = false, selected = null, onSelect }: Scen
           <rect x="36" y={b.y + 6} width="688" height={b.h - 12} fill="none" stroke={v.color} strokeWidth={f?.state && f.state !== "idle" && f.state !== "not_implemented" ? 5 : 0} strokeDasharray={v.dashed ? "10 6" : undefined} rx="4" />
         </g>;
       })}
+      {/* conveyors on the pipeline floors; crates only for episodes the payload puts there */}
+      {CONVEYOR_FLOORS.map((code) => {
+        const b = floorBox(code);
+        return <rect key={code} aria-hidden x="500" y={b.y + 76} width="226" height="8" rx="3" fill="#6B7790" stroke={OUT} strokeWidth="2.5" />;
+      })}
       {/* below ground is darker */}
       <rect x="30" y={floorBox("B1").y} width="700" height="90" fill="#000" opacity=".22" aria-hidden />
 
@@ -121,11 +152,17 @@ export function Tower({ tower, frozen = false, selected = null, onSelect }: Scen
         <rect x="770" y="46" width="160" height="826" fill="#9CCBF2" fillOpacity=".28" stroke={OUT} strokeWidth="5" />
         {[0, 1].map((i) => <rect key={i} x={i ? 920 : 762} y="46" width="18" height="826" fill="#8A97AB" stroke={OUT} strokeWidth="4" />)}
         {Array.from({ length: 8 }, (_, i) => <path key={i} d={`M778 ${50 + i * 103}l142 103M920 ${50 + i * 103}l-142 103`} stroke={OUT} strokeWidth="2" opacity=".28" />)}
-        <path d={`M850 46V${cy - CAR_H / 2}`} stroke={OUT} strokeWidth="4" />
-        <rect x="790" y={cy - CAR_H / 2} width="120" height={CAR_H} rx="8" fill="#F2F5FA" stroke={OUT} strokeWidth="5" />
-        <rect x="802" y={cy - CAR_H / 2 + 9} width="96" height={CAR_H - 28} rx="4" fill="#9CCBF2" stroke={OUT} strokeWidth="3" />
-        <path d={`M850 ${cy - CAR_H / 2 + 9}v${CAR_H - 28}`} stroke={OUT} strokeWidth="3" />
-        {car && <g transform={`translate(850 ${cy + CAR_H / 2 - 9})`}><LampGlyph state={byCode.get(car)?.state ?? "idle"} /></g>}
+        {/* the car is drawn around y=0 and moved by a CSS transform (compositor only); it eases when the floor changes */}
+        <clipPath id="tower-shaft"><rect x="770" y="46" width="160" height="826" /></clipPath>
+        <g clipPath="url(#tower-shaft)">
+          <g data-car={carCode} className={motion.car.travel ? "tower-car-travel" : undefined} style={{ transform: `translateY(${cy}px)` }}>
+            <path d={`M850 -900V${-CAR_H / 2}`} stroke={OUT} strokeWidth="4" />
+            <rect x="790" y={-CAR_H / 2} width="120" height={CAR_H} rx="8" fill="#F2F5FA" stroke={OUT} strokeWidth="5" />
+            <rect x="802" y={-CAR_H / 2 + 9} width="96" height={CAR_H - 28} rx="4" fill="#9CCBF2" stroke={OUT} strokeWidth="3" />
+            <path d={`M850 ${-CAR_H / 2 + 9}v${CAR_H - 28}`} stroke={OUT} strokeWidth="3" />
+            {car && <g transform={`translate(850 ${CAR_H / 2 - 9})`}><LampGlyph state={byCode.get(car)?.state ?? "idle"} /></g>}
+          </g>
+        </g>
       </g>
 
       {/* landing signs: floor code and status lamp */}
@@ -139,6 +176,11 @@ export function Tower({ tower, frozen = false, selected = null, onSelect }: Scen
         </g>;
       })}
     </svg>
+
+    <div aria-hidden className="pointer-events-none absolute inset-0">
+      {motion.crates.map((c) => <Crate key={`${c.code}-${c.episode.id}`} c={c} />)}
+      {motion.lamps.map((code) => <LampPulse key={code} code={code} />)}
+    </div>
 
     {/* floor labels: real buttons laid over the plates */}
     {FLOOR_CODES.map((code) => {

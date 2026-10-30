@@ -40,9 +40,18 @@ body { margin: 0; background: var(--color-bg); color: var(--color-ink); font-fam
 .field:focus-visible, .btn:focus-visible, a:focus-visible { outline: 3px solid var(--color-blue); outline-offset: 2px; }
 .mono { font-family: var(--font-mono); }
 .muted { color: var(--color-muted); }
-/* Minimal pulse for the active floor's tracker dot. The full state-driven animation system is T4. */
-@keyframes tower-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgb(52 211 153 / 0.6); } 50% { box-shadow: 0 0 0 7px rgb(52 211 153 / 0); } }
-.tower-pulse { animation: tower-pulse 1.6s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) { .tower-pulse { animation: none; } }
 .tower-frozen { filter: grayscale(1); opacity: 0.65; }
-.tower-frozen .tower-pulse { animation: none; }
+/* Tower motion (T4). Only transform and opacity animate. The page adds these classes only while the payload says a job
+   is doing the work; .tower-paused (tab hidden) pauses them and reduced motion removes them. */
+@keyframes tower-ring { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(1.7); opacity: 0; } }
+.tower-pulse { position: relative; }
+.tower-pulse::after { content: ""; position: absolute; inset: -3px; border-radius: 9999px; border: 3px solid var(--color-green); animation: tower-ring 1.6s steps(8, end) infinite; }
+.tower-lamp-pulse { border: 2px solid var(--color-green); will-change: transform, opacity; animation: tower-ring 1.6s steps(8, end) infinite; }
+@keyframes tower-slide { from { transform: translateX(0); } to { transform: translateX(206%); } }
+.tower-crate-moving { will-change: transform; animation: tower-slide 3.2s steps(32, end) infinite alternate; }
+.tower-car-travel { transition: transform 1.4s ease-in-out; }
+.tower-paused *, .tower-paused *::after { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) {
+  .tower-pulse::after, .tower-lamp-pulse, .tower-crate-moving { animation: none; }
+  .tower-car-travel { transition: none; }
+}

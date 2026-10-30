@@ -16,7 +16,7 @@ function useNames() {
 
 const DOT_STYLE: Record<DotKind, string> = {
   check: "border-blue bg-blue text-bg",
-  pulse: "tower-pulse border-green bg-green",
+  pulse: "border-green bg-green",
   hollow: "border-muted bg-transparent",
   failed: "border-badge-red bg-badge-red text-bg",
   waiting: "border-amber bg-transparent",
@@ -25,7 +25,7 @@ const DOT_MARK: Record<DotKind, string> = { check: "✓", pulse: "", hollow: "",
 
 // ProgressTracker sits beside the scene and is positioned from the same floor geometry, so each dot
 // lines up with its floor. The line segment under a dot is solid once the floor below is finished.
-export function ProgressTracker({ floors, frozen }: { floors: Floor[]; frozen: boolean }) {
+export function ProgressTracker({ floors, frozen, motion = false }: { floors: Floor[]; frozen: boolean; motion?: boolean }) {
   const n = useNames();
   const dots = trackerDots(floors);
   return <div role="group" aria-label={n.t("tower.progress")} title={n.t("tower.progressDesc")} className={`relative w-12 shrink-0 ${frozen ? "tower-frozen" : ""}`}>
@@ -35,7 +35,7 @@ export function ProgressTracker({ floors, frozen }: { floors: Floor[]; frozen: b
         {above && <span aria-hidden className="absolute left-1/2 w-0 -translate-x-1/2 border-l-[3px]"
           style={{ top: `${above.yPct}%`, height: `${d.yPct - above.yPct}%`, borderLeftStyle: above.solidBelow ? "solid" : "dashed", borderColor: above.solidBelow ? "var(--color-blue)" : "var(--color-muted)" }} />}
         <span data-dot={d.code} data-kind={d.kind} role="img" aria-label={`${d.code}: ${n.state(d.state)}`}
-          className={`absolute left-1/2 grid h-6 w-6 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-[3px] text-xs font-extrabold ${DOT_STYLE[d.kind]}`}
+          className={`absolute left-1/2 grid h-6 w-6 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-[3px] text-xs font-extrabold ${DOT_STYLE[d.kind]} ${d.kind === "pulse" && motion ? "tower-pulse" : ""}`}
           style={{ top: `${d.yPct}%` }}>{DOT_MARK[d.kind]}</span>
       </div>;
     })}
