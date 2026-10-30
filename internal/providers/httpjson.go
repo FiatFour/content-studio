@@ -9,9 +9,16 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/fiat/content-studio/internal/jobs"
 )
+
+// NewLocalClient is the HTTP client for local AI services. It never follows redirects: a local service
+// must not be able to send the worker to another host (SSRF); a 3xx is reported as a rejected request.
+func NewLocalClient(timeout time.Duration) *http.Client {
+	return &http.Client{Timeout: timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+}
 
 const maxResponse = 64 << 20
 

@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -47,7 +46,7 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	// Model calls can take minutes; the stage context still cancels them.
-	client := &http.Client{Timeout: 15 * time.Minute}
+	client := providers.NewLocalClient(15 * time.Minute) // never follows redirects
 	llm := &providers.Ollama{BaseURL: cfg.OllamaURL, Model: cfg.LLMModel, NumCtx: cfg.LLMNumCtx, Client: client}
 	comfy := &providers.ComfyUI{BaseURL: cfg.ComfyURL, Checkpoint: cfg.ImageCheckpoint, Steps: cfg.ImageSteps, CFG: cfg.ImageCFG,
 		Sampler: cfg.ImageSampler, Scheduler: cfg.ImageScheduler, Client: client}

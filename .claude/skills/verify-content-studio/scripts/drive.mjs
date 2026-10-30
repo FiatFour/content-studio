@@ -248,7 +248,11 @@ if (env.SESSION && flow !== "auth") await context.addCookies([{ name: "studio_se
 const page = await context.newPage();
 const consoleErrors = [];
 page.on("pageerror", (e) => consoleErrors.push(String(e).slice(0, 200)));
+// The server sends a strict Content-Security-Policy; a violation shows up as a console error. Any one fails the run.
+const cspViolations = [];
+page.on("console", (m) => { if (/Content Security Policy|Permissions-Policy|Refused to (load|apply|execute|connect|frame|create)/i.test(m.text())) cspViolations.push(m.text().slice(0, 200)); });
 try { await flows[flow](page, context); } catch (e) { check("flow ran to the end", false, String(e).slice(0, 300)); }
+check("no Content-Security-Policy / Permissions-Policy problems in the console", cspViolations.length === 0, cspViolations.join(" | "));
 await page.screenshot({ path: `${evidence}/screenshot.png`, fullPage: true });
 writeFileSync(`${evidence}/aria.txt`, await page.locator("body").ariaSnapshot());
 check("no uncaught page errors", consoleErrors.length === 0, consoleErrors.join(" | "));
