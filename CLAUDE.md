@@ -9,9 +9,9 @@ First content profile: an **original** adult-animated life-simulation sitcom.
 It is not lip-synced character animation. If a requested effect isn't supported, say so. Don't pass off a still as animation.
 
 ## Current milestone
-**M2 — Reliability, security, cost.** See `docs/spec/milestones.md`. M1a is closed (report: `docs/m1a-report.md`). M0 findings: `docs/assessment.md`.
+**M4 — Agent tower visualization.** See `docs/spec/milestones.md`. M3 (operations control center) code is done: job inspection, provider health and resource monitor, artifact history and comparison, canon proposals with deterministic checks, QA reports. M2 code is done too (cloud parts dropped, see D10). M1a is closed (report: `docs/m1a-report.md`). M0 findings: `docs/assessment.md`.
 M1b code is done (character records, episode summaries, script stage fed by canon, speaker check, per-character LoRA in the image stage). M1b remaining, owner-only: the smoke run and the acceptance (three consecutive episodes keep each main character recognizable).
-M2 scope is in `milestones.md`. D9 (auth) was decided on 2026-10-29: passkey (WebAuthn) with a session cookie, see `docs/spec/security-ops.md`. D10 was decided on 2026-10-30: no cloud provider, so cloud work (budget, kill switch, adapters) is not planned and no cloud code is written.
+M4 scope is in `milestones.md`; the tower is CSS + SVG with no new dependency (owner default, 2026-10-30). D9 (auth) was decided on 2026-10-29: passkey (WebAuthn) with a session cookie, see `docs/spec/security-ops.md`. D10 was decided on 2026-10-30: no cloud provider, so cloud work (budget, kill switch, adapters) is not planned and no cloud code is written.
 Work only on the current milestone. The other spec files describe later work, so don't build ahead.
 
 ## Non-negotiables
