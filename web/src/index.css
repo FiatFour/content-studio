@@ -40,3 +40,9 @@ body { margin: 0; background: var(--color-bg); color: var(--color-ink); font-fam
 .field:focus-visible, .btn:focus-visible, a:focus-visible { outline: 3px solid var(--color-blue); outline-offset: 2px; }
 .mono { font-family: var(--font-mono); }
 .muted { color: var(--color-muted); }
+/* Minimal pulse for the active floor's tracker dot. The full state-driven animation system is T4. */
+@keyframes tower-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgb(52 211 153 / 0.6); } 50% { box-shadow: 0 0 0 7px rgb(52 211 153 / 0); } }
+.tower-pulse { animation: tower-pulse 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .tower-pulse { animation: none; } }
+.tower-frozen { filter: grayscale(1); opacity: 0.65; }
+.tower-frozen .tower-pulse { animation: none; }
