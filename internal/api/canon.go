@@ -40,9 +40,9 @@ type querier interface {
 // ensureProject returns the single fictional_series project, creating it on first use.
 func ensureProject(ctx context.Context, q querier) (int64, error) {
 	var id int64
-	err := q.QueryRow(ctx, `SELECT id FROM projects WHERE profile = $1 ORDER BY id LIMIT 1`, pipeline.FictionalSeries.Profile).Scan(&id)
+	err := q.QueryRow(ctx, `SELECT id FROM projects WHERE profile = $1 ORDER BY id LIMIT 1`, pipeline.FictionalSeriesID).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		err = q.QueryRow(ctx, `INSERT INTO projects (name, profile) VALUES ('Life Sim Sitcom', $1) RETURNING id`, pipeline.FictionalSeries.Profile).Scan(&id)
+		err = q.QueryRow(ctx, `INSERT INTO projects (name, profile) VALUES ('Life Sim Sitcom', $1) RETURNING id`, pipeline.FictionalSeriesID).Scan(&id)
 	}
 	return id, err
 }
@@ -155,7 +155,7 @@ func (s *Server) listCharacters(c echo.Context) error {
 	ctx := c.Request().Context()
 	out := []characterJSON{}
 	var projectID int64
-	err := s.DB.QueryRow(ctx, `SELECT id FROM projects WHERE profile = $1 ORDER BY id LIMIT 1`, pipeline.FictionalSeries.Profile).Scan(&projectID)
+	err := s.DB.QueryRow(ctx, `SELECT id FROM projects WHERE profile = $1 ORDER BY id LIMIT 1`, pipeline.FictionalSeriesID).Scan(&projectID)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
