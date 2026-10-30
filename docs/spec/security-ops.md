@@ -119,6 +119,12 @@ The operations dashboard (M3) should answer:
 - Which artifact version came out, and is it approved?
 - Can it safely resume?
 
+## Provider health and resource monitor (M3, issues #56 and #57)
+Two read-only routes, behind the session like every other `/api` route, shown on the Providers page. Neither writes anything or starts GPU work.
+- `GET /api/providers/health` probes the configured Ollama (`/api/tags`), ComfyUI (`/system_stats`) and thaivoice (`/health`) addresses with one GET each, 3 s timeout, no redirects (a 3xx is reported as `redirect`). The server picks host and path from config; the client sends nothing. A URL that is not `localhost` or a loopback IP, or that carries credentials, is not probed (`unavailable`, `not_local`). The response shows only `scheme://host:port`, never the path, credentials or response body; failures are fixed codes (`timeout`, `unreachable`, `http_error`, `redirect`, `not_configured`, `not_local`), never raw error text.
+- `GET /api/monitor` returns the GPU (`nvidia-smi --query-gpu=... --format=csv,noheader,nounits` through `exec.CommandContext`, fixed argument array, 3 s timeout), free and total space of the artifact store and export directories (statfs), queue counts (queued, running, waiting_for_resource, retry_scheduled) and the GPU slot (limit, running, waiting, stage and episode of the running job). If `nvidia-smi` is missing, fails or prints something unparsable, `gpu.available` is false and no values are invented; a disk that cannot be read is null.
+Limitations: the checks run when the page polls (health every 15 s, monitor every 5 s) or on "Check now", only while the page is open; there is no history. Health shows that a service answers, not that its model is loaded or fits in VRAM. Only the first GPU is reported. `GET /api/system` (top bar) still has its own VRAM and disk reading.
+
 ## Audit log
 Append-only table for approvals, rejections, exports, canon commits, budget and provider changes, kill switch, and auth failures. Who, what, when, before/after values.
 

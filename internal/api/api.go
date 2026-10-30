@@ -39,6 +39,9 @@ type Server struct {
 	Auth         *auth.Service   // nil refuses every non-public /api request (fail closed)
 	CloudEnabled bool            // backend config STUDIO_CLOUD_ENABLED, shown read-only by GET /api/policies
 	Limits       Limits          // zero value means the defaults (secure.go)
+	Health       []HealthTarget  // local services GET /api/providers/health probes (read-only)
+	ExportDir    string          // measured for free space by GET /api/monitor
+	RunCmd       CmdRunner       // runs nvidia-smi for /api/monitor; nil runs the real command
 	rl           *rateLimiter
 }
 
@@ -95,6 +98,8 @@ func (s *Server) Echo() *echo.Echo {
 	a.GET("/resources", s.listResources)
 	a.PUT("/resources/:name", s.putResource)
 	a.GET("/policies", s.listPolicies)
+	a.GET("/providers/health", s.providerHealth)
+	a.GET("/monitor", s.monitor)
 
 	if s.Notify != nil {
 		a.GET("/notifications", s.getNotifications)
