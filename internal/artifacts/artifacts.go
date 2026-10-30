@@ -32,11 +32,14 @@ const (
 	QAReport    Type = "qa_report"
 	ScriptInput Type = "script_prompt"
 	Timeline    Type = "timeline"
+	// Source is owner-pasted text for a Knowledge Shorts episode (D15). It belongs to an episode but to
+	// no run or job: the owner creates it, not a stage.
+	Source Type = "source"
 )
 
 var extensions = map[Type]string{
 	Script: "json", Image: "png", VoiceRef: "wav", LineAudio: "wav", Dialogue: "wav",
-	Subtitles: "srt", RenderSpec: "json", Video: "mp4", QAReport: "json", ScriptInput: "json", Timeline: "json",
+	Subtitles: "srt", RenderSpec: "json", Video: "mp4", QAReport: "json", ScriptInput: "json", Timeline: "json", Source: "txt",
 }
 
 type Artifact struct {
@@ -78,9 +81,15 @@ type File struct {
 type Loc struct {
 	EpisodeID, RunID, JobID int64
 	Attempt                 int
+	// Sub, when set, places files in episodes/<id>/<Sub> instead of a job attempt directory. It is
+	// for artifacts that belong to no run (sources) and must be built from fixed names and ids only.
+	Sub string
 }
 
 func (l Loc) Dir() string {
+	if l.Sub != "" {
+		return fmt.Sprintf("episodes/%d/%s", l.EpisodeID, l.Sub)
+	}
 	return fmt.Sprintf("episodes/%d/runs/%d/jobs/%d/a%d", l.EpisodeID, l.RunID, l.JobID, l.Attempt)
 }
 
@@ -224,7 +233,7 @@ func Insert(ctx context.Context, tx pgx.Tx, a *Artifact) error {
 			(SELECT coalesce(max(version), 0) + 1 FROM artifacts WHERE episode_id = $2 AND type = $5 AND item_key = $6),
 			$7, $8, $9, 'valid', $10, $11, $12, $13)
 		RETURNING id, version`,
-		a.ProjectID, a.EpisodeID, a.RunID, a.JobID, a.Type, a.ItemKey, a.StoragePath, a.SHA256, a.SizeBytes,
+		a.ProjectID, a.EpisodeID, nullID(a.RunID), nullID(a.JobID), a.Type, a.ItemKey, a.StoragePath, a.SHA256, a.SizeBytes,
 		a.Provider, a.Model, meta, lic).Scan(&a.ID, &a.Version)
 	if err != nil {
 		return err
@@ -235,6 +244,14 @@ func Insert(ctx context.Context, tx pgx.Tx, a *Artifact) error {
 		}
 	}
 	return nil
+}
+
+// nullID stores 0 as NULL. Only sources have no run or job; the table's CHECK refuses NULL for any other type.
+func nullID(id int64) any {
+	if id == 0 {
+		return nil
+	}
+	return id
 }
 
 func orEmpty(m map[string]any) map[string]any {
