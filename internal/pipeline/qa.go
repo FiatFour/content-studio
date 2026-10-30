@@ -45,7 +45,15 @@ type qaStage struct{ d *Deps }
 
 func (s *qaStage) Run(ctx context.Context, j *jobs.Job, progress func(int, int)) (func(pgx.Tx) error, error) {
 	d := s.d
-	if err := d.Queue.SetProvider(ctx, j.ID, qaInfo.Provider, qaInfo.Model); err != nil {
+	info := qaInfo
+	scriptArt, isShorts, err := d.qaScript(ctx, j)
+	if err != nil {
+		return nil, err
+	}
+	if isShorts {
+		info.Model = knowledgeShortsSpec.QARules
+	}
+	if err := d.Queue.SetProvider(ctx, j.ID, info.Provider, info.Model); err != nil {
 		return nil, err
 	}
 	e, err := d.episode(ctx, j.EpisodeID)
@@ -65,6 +73,13 @@ func (s *qaStage) Run(ctx context.Context, j *jobs.Job, progress func(int, int))
 	}
 	video, specArt := videos[len(videos)-1], specs[len(specs)-1]
 	results := d.runQA(ctx, j, e, video, specArt, progress)
+	if isShorts {
+		more, err := d.shortsQA(ctx, e, scriptArt, video, specArt)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, more...)
+	}
 	report, err := json.MarshalIndent(map[string]any{"video_artifact_id": video.ID, "video_sha256": video.SHA256, "results": results}, "", "  ")
 	if err != nil {
 		return nil, err
@@ -80,7 +95,7 @@ func (s *qaStage) Run(ctx context.Context, j *jobs.Job, progress func(int, int))
 		status = "qa_failed"
 	}
 	out := d.newOutputs(j)
-	if _, err := out.bytes(artifacts.QAReport, "", report, qaInfo, map[string]any{"passed": len(failed) == 0, "failed_rules": failed}, []int64{video.ID, specArt.ID}); err != nil {
+	if _, err := out.bytes(artifacts.QAReport, "", report, info, map[string]any{"passed": len(failed) == 0, "failed_rules": failed}, []int64{video.ID, specArt.ID}); err != nil {
 		return nil, err
 	}
 	record := out.persist(func(tx pgx.Tx) error {
@@ -106,6 +121,43 @@ func (s *qaStage) Run(ctx context.Context, j *jobs.Job, progress func(int, int))
 		return nil, err
 	}
 	return nil, jobs.Errorf(jobs.ErrQAFailed, nil, "blocking QA checks failed: %s", strings.Join(failed, ", "))
+}
+
+// qaScript finds the script artifact the run was made from and says whether it is a Knowledge Shorts
+// script, which adds that profile's rules to the shared checks. A run with no script is not an error here.
+func (d *Deps) qaScript(ctx context.Context, j *jobs.Job) (artifacts.Artifact, bool, error) {
+	runID, err := d.inputRun(ctx, j)
+	if err != nil {
+		return artifacts.Artifact{}, false, err
+	}
+	list, err := artifacts.ForRun(ctx, d.DB, runID, artifacts.Script)
+	if err != nil || len(list) == 0 {
+		return artifacts.Artifact{}, false, err
+	}
+	a := list[len(list)-1]
+	return a, isShortsScript(a), nil
+}
+
+// shortsQA measures what the Shorts rules need (length, subtitle text) and runs them.
+func (d *Deps) shortsQA(ctx context.Context, e Episode, scriptArt, video, specArt artifacts.Artifact) ([]QAResult, error) {
+	in, err := d.loadShortsQA(ctx, scriptArt)
+	if err != nil {
+		return nil, err
+	}
+	var dur float64
+	if path, err := d.Store.Abs(video.StoragePath); err == nil {
+		if p, err := d.Tools.Probe(ctx, path); err == nil {
+			dur = p.DurationSeconds()
+		}
+	}
+	var subs string
+	var spec RenderSpec
+	if data, err := d.read(specArt); err == nil && json.Unmarshal(data, &spec) == nil {
+		if abs, err := d.Store.Abs(spec.Subtitles.Path); err == nil {
+			subs, _ = readSmall(abs)
+		}
+	}
+	return shortsRules(in, e, dur, subs, knowledgeShortsSpec), nil
 }
 
 func (d *Deps) runQA(ctx context.Context, j *jobs.Job, e Episode, video, specArt artifacts.Artifact, progress func(int, int)) []QAResult {

@@ -77,6 +77,16 @@ An AI score never replaces the blocking checks or human review.
 A failed blocking check prevents the video from being marked ready for review.
 QA results record rule versions, timestamps, and artifact IDs, with a clear reason and a suggested fix for each failure.
 
+### Knowledge Shorts rules (rule set `qa-rules-shorts-v1`, M5 T6)
+The QA stage is shared. After the checks above it asks whether the run's script artifact is a Knowledge Shorts script (its meta says `knowledge_shorts`) and, if so, adds these rules (small rule list in `internal/pipeline/shorts_qa.go`, not a forked stage). The job's recorded model label is the profile's `QARules`. Every rule is deterministic, recorded in `qa_results` with rule id, version 1, severity, reason and suggested fix.
+- `shorts_duration_range` (blocking): the video is 30 to 60 s (the profile range) and within 10% of the episode target. The shared `duration` rule still runs.
+- `shorts_sources_intact` (blocking): every source version named in the script's meta (by artifact id) still exists, has the recorded sha256 and its file hashes to it. A missing, rewritten or removed source fails.
+- `shorts_claims_quoted` (blocking): `CheckShortsClaims` is run again against exactly those source versions: every claim names an existing source and its quote is in that source word for word (whitespace aside). A script with no claims fails.
+- `shorts_beats_supported` (blocking): every beat lists claims or is marked `no_factual_claim`, and the two are not mixed.
+- `shorts_sources_card` (blocking): the subtitle file holds the Sources card heading (zero-width spaces from Thai segmentation ignored).
+- `shorts_sources_current` (warning): a newer version of a used source exists. The script is still checked against the versions it was made from.
+The claim rules prove the quote is in the source, not that the claim is true. The review page says so and the owner decides. Approval and export are unchanged: bound to the exact artifact id and sha256, explicit click, no AI input.
+
 ## Review
 The review page shows:
 - Video player.
@@ -85,6 +95,7 @@ The review page shows:
 - QA results and continuity warnings.
 - Cost (from M2).
 - Version history.
+- For a Knowledge Shorts video only: the sources used (id, title, version, short sha256), each claim with its source id, the beats that state it and its quote, and the stored claim check, all as plain text, with a note that the check proves the quote is in the source, not that the claim is true. `GET /api/videos/:id/review` adds a read-only `shorts` object for that profile only (the Fictional Series response is unchanged); it carries no file paths. If the stored script file is missing or no longer matches its hash, `shorts.unreadable` says so and no claims are shown.
 
 Actions: **Approve**, **Reject (with comment)**, **Request changes**.
 Approval is always an explicit click. Opening, watching, or downloading never implies approval.

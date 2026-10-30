@@ -344,7 +344,8 @@ func TestKnowledgeShortsWithScriptStageIsStillNotRunnable(t *testing.T) {
 	p, _ := pipeline.Profiles.Get(pipeline.KnowledgeShortsID)
 	spec := p.Spec()
 	// T5 edit: planned stages grew from {script} to the five stages, and Stages(d) now returns them.
-	if len(spec.PlannedStages) != 5 || spec.PlannedStages[0] != "script" {
+	// T6 edit: the planned list grew from five stages to six (qa added).
+	if len(spec.PlannedStages) != 6 || spec.PlannedStages[0] != "script" {
 		t.Fatalf("planned stages %v", spec.PlannedStages)
 	}
 	if spec.Runnable() || len(spec.Plan().Full) != 0 {

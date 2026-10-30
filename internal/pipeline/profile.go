@@ -137,8 +137,9 @@ type knowledgeShorts struct{}
 func (knowledgeShorts) Spec() Spec { return knowledgeShortsSpec }
 
 // Stages implements the planned stages: the Knowledge Shorts script stage (T4) and the shared tts,
-// images, subtitles and render stages (T5). The shared stages read the Shorts script through the
-// adapter in loadScript, so they are not forked. The qa stage arrives with T6.
+// images, subtitles and render stages (T5) and the shared qa stage (T6). The shared stages read the
+// Shorts script through the adapter in loadScript, and qa adds the Shorts rules for a Shorts script,
+// so none of them is forked.
 func (knowledgeShorts) Stages(d *Deps) map[string]jobs.Stage {
 	return map[string]jobs.Stage{
 		"script":    &shortsScriptStage{d},
@@ -146,15 +147,16 @@ func (knowledgeShorts) Stages(d *Deps) map[string]jobs.Stage {
 		"images":    &imagesStage{d},
 		"subtitles": &subtitlesStage{d},
 		"render":    &renderStage{d},
+		"qa":        &qaStage{d},
 	}
 }
 
 // PlannedStages is the ordered stage list; Stages stays empty so the profile is still refused with
-// 501 until T6 adds the qa stage and moves this list into Stages["full"]. Resources already say
-// which stages hold the GPU.
+// 501 until T7 wires the multi-profile queue and worker and moves this list into Stages["full"].
+// Resources already say which stages hold the GPU.
 var knowledgeShortsSpec = Spec{
-	ID: KnowledgeShortsID, MinDurationS: 30, MaxDurationS: 60,
-	PlannedStages: []string{"script", "tts", "images", "subtitles", "render"},
+	ID: KnowledgeShortsID, MinDurationS: 30, MaxDurationS: 60, QARules: "qa-rules-shorts-v1",
+	PlannedStages: []string{"script", "tts", "images", "subtitles", "render", "qa"},
 	Resources:     map[string]string{"script": "gpu", "tts": "gpu", "images": "gpu"},
 	Visual: &VisualSpec{
 		StylePrefix: "flat vector infographic illustration, simple shapes, clean flat colors, minimal icons and diagrams, " +
