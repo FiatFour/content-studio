@@ -17,6 +17,7 @@ import (
 
 type episodeSummary struct {
 	ID              int64      `json:"id"`
+	Profile         string     `json:"profile"`
 	Number          int        `json:"number"`
 	Title           string     `json:"title"`
 	TargetDurationS int        `json:"target_duration_s"`
@@ -90,13 +91,14 @@ func (s *Server) loadRuns(ctx context.Context, episodeID int64, limit int) ([]ru
 
 func (s *Server) listEpisodes(c echo.Context) error {
 	ctx := c.Request().Context()
-	rows, err := s.DB.Query(ctx, `SELECT id, number, title, target_duration_s, created_at FROM episodes ORDER BY id DESC LIMIT 100`)
+	rows, err := s.DB.Query(ctx, `SELECT e.id, p.profile, e.number, e.title, e.target_duration_s, e.created_at
+		FROM episodes e JOIN projects p ON p.id = e.project_id ORDER BY e.id DESC LIMIT 100`)
 	if err != nil {
 		return err
 	}
 	eps, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (episodeSummary, error) {
 		var e episodeSummary
-		err := r.Scan(&e.ID, &e.Number, &e.Title, &e.TargetDurationS, &e.CreatedAt)
+		err := r.Scan(&e.ID, &e.Profile, &e.Number, &e.Title, &e.TargetDurationS, &e.CreatedAt)
 		return e, err
 	})
 	if err != nil {
@@ -153,8 +155,9 @@ func (s *Server) getEpisode(c echo.Context) error {
 		InStoryDate *string `json:"in_story_date"`
 	}
 	var inStory *time.Time
-	if err := s.DB.QueryRow(ctx, `SELECT id, number, title, idea, target_duration_s, created_at, in_story_date FROM episodes WHERE id = $1`, id).
-		Scan(&e.ID, &e.Number, &e.Title, &e.Idea, &e.TargetDurationS, &e.CreatedAt, &inStory); err != nil {
+	if err := s.DB.QueryRow(ctx, `SELECT e.id, p.profile, e.number, e.title, e.idea, e.target_duration_s, e.created_at, e.in_story_date
+		FROM episodes e JOIN projects p ON p.id = e.project_id WHERE e.id = $1`, id).
+		Scan(&e.ID, &e.Profile, &e.Number, &e.Title, &e.Idea, &e.TargetDurationS, &e.CreatedAt, &inStory); err != nil {
 		return err
 	}
 	e.InStoryDate = fmtDate(inStory)
@@ -179,11 +182,19 @@ func (s *Server) createEpisode(c echo.Context) error {
 		Idea            string `json:"idea"`
 		TargetDurationS int    `json:"target_duration_s"`
 		InStoryDate     string `json:"in_story_date"`
+		Profile         string `json:"profile"`
 	}
 	if err := bind(c, &req); err != nil {
 		return err
 	}
-	spec := pipeline.FictionalSeriesSpec()
+	if req.Profile == "" {
+		req.Profile = pipeline.FictionalSeriesID
+	}
+	prof, ok := pipeline.Profiles.Get(req.Profile)
+	if !ok {
+		return fail(http.StatusBadRequest, "unknown profile")
+	}
+	spec := prof.Spec()
 	req.Title, req.Idea = strings.TrimSpace(req.Title), strings.TrimSpace(req.Idea)
 	switch {
 	case req.Title == "" || utf8.RuneCountInString(req.Title) > 120:
@@ -197,10 +208,15 @@ func (s *Server) createEpisode(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	// Refuse before anything is written: a profile without stages, or one this server's queue has no
+	// plan for, gets no episode and no run.
+	if !spec.Runnable() || spec.ID != s.Queue.Plan.Profile {
+		return fail(http.StatusNotImplemented, "Not implemented: the "+spec.ID+" profile cannot run yet")
+	}
 	ctx := c.Request().Context()
 	var episodeID int64
 	err = pgx.BeginFunc(ctx, s.DB, func(tx pgx.Tx) error {
-		projectID, err := ensureProject(ctx, tx)
+		projectID, err := ensureProject(ctx, tx, spec.ID)
 		if err != nil {
 			return err
 		}

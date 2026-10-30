@@ -42,7 +42,7 @@ export type Run = {
   id: number; kind: "full" | "rerender" | "rewrite"; parent_run_id: number | null; feedback: string | null; state: string; created_at: string;
   finished_at: string | null; stages: string[]; jobs: Job[];
 };
-export type EpisodeSummary = { id: number; number: number; title: string; target_duration_s: number; created_at: string; latest_run: Run | null };
+export type EpisodeSummary = { id: number; profile: string; number: number; title: string; target_duration_s: number; created_at: string; latest_run: Run | null };
 export type VideoVersion = {
   id: number; run_id: number; version: number; sha256: string; size_bytes: number; validation_status: string;
   created_at: string; decision: string | null; exported: boolean;

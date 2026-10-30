@@ -51,7 +51,7 @@ func (s *Server) createCanonProposal(c echo.Context) error {
 		return err
 	}
 	ctx := c.Request().Context()
-	projectID, err := ensureProject(ctx, s.DB)
+	projectID, err := ensureProject(ctx, s.DB, pipeline.FictionalSeriesID)
 	if err != nil {
 		return err
 	}

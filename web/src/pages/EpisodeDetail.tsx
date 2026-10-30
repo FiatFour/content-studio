@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { profileLabel } from "../profiles";
 import { api, ApiError, contentUrl, type ArtifactRow, type Character, type EpisodeSummaryText, type Run, type VideoVersion } from "../api";
 import { usePoll } from "../hooks";
 import { useI18n, type Key } from "../i18n";
@@ -6,7 +7,7 @@ import { ErrorExplain, JobPanel } from "../JobPanel";
 import { Bar, Card, StateBadge, agentColor, fmtBytes, fmtTime } from "../ui";
 
 type Detail = {
-  episode: { id: number; number: number; title: string; idea: string; target_duration_s: number; in_story_date: string | null };
+  episode: { id: number; profile: string; number: number; title: string; idea: string; target_duration_s: number; in_story_date: string | null };
   runs: Run[]; videos: VideoVersion[]; summary: EpisodeSummaryText | null;
 };
 
@@ -74,7 +75,7 @@ export function EpisodeDetail({ id }: { id: number }) {
   return <div className="flex flex-col gap-4">
     <a href="#/episodes">← {t("episode.back")}</a>
     <Card><h1 className="font-display text-2xl font-extrabold">{t("episodes.episode", { n: e.number })} · {e.title}</h1>
-      <p className="muted mt-1"><strong>{t("episode.idea")}:</strong> {e.idea}</p><p className="muted text-sm">{t("episodes.target", { s: e.target_duration_s })}</p></Card>
+      <p className="muted mt-1"><strong>{t("episode.idea")}:</strong> {e.idea}</p><p className="muted text-sm">{t(profileLabel(e.profile))} · {t("episodes.target", { s: e.target_duration_s })}</p></Card>
     <CanonCard id={e.id} inStoryDate={e.in_story_date} summary={summary} />
     {run && <Card title={<span className="flex flex-wrap items-center gap-3">{t("episode.stages")} <StateBadge state={run.state} /> <span className="muted text-sm">{t(`run.${run.kind}` as Key)} #{run.id}</span></span>}>
       <ol className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">{run.stages.map((s) => { const j = run.jobs.find((x) => x.stage === s);

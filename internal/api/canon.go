@@ -7,6 +7,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -37,12 +38,22 @@ type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// ensureProject returns the single fictional_series project, creating it on first use.
-func ensureProject(ctx context.Context, q querier) (int64, error) {
+// projectNames are the names given to a profile's project when it is created on first use.
+var projectNames = map[string]string{
+	pipeline.FictionalSeriesID: "Life Sim Sitcom",
+	pipeline.KnowledgeShortsID: "Knowledge Shorts",
+}
+
+// ensureProject returns the single project of a profile, creating it on first use.
+func ensureProject(ctx context.Context, q querier, profile string) (int64, error) {
+	name, ok := projectNames[profile]
+	if !ok {
+		return 0, fmt.Errorf("no project name for profile %q", profile)
+	}
 	var id int64
-	err := q.QueryRow(ctx, `SELECT id FROM projects WHERE profile = $1 ORDER BY id LIMIT 1`, pipeline.FictionalSeriesID).Scan(&id)
+	err := q.QueryRow(ctx, `SELECT id FROM projects WHERE profile = $1 ORDER BY id LIMIT 1`, profile).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		err = q.QueryRow(ctx, `INSERT INTO projects (name, profile) VALUES ('Life Sim Sitcom', $1) RETURNING id`, pipeline.FictionalSeriesID).Scan(&id)
+		err = q.QueryRow(ctx, `INSERT INTO projects (name, profile) VALUES ($1, $2) RETURNING id`, name, profile).Scan(&id)
 	}
 	return id, err
 }
@@ -183,7 +194,7 @@ func (s *Server) createCharacter(c echo.Context) error {
 	ctx := c.Request().Context()
 	var id int64
 	err = pgx.BeginFunc(ctx, s.DB, func(tx pgx.Tx) error {
-		projectID, err := ensureProject(ctx, tx)
+		projectID, err := ensureProject(ctx, tx, pipeline.FictionalSeriesID)
 		if err != nil {
 			return err
 		}
