@@ -101,6 +101,7 @@ func (s *Server) Echo() *echo.Echo {
 	a.GET("/policies", s.listPolicies)
 	a.GET("/providers/health", s.providerHealth)
 	a.GET("/monitor", s.monitor)
+	a.GET("/tower", s.getTower)
 
 	if s.Notify != nil {
 		a.GET("/notifications", s.getNotifications)
