@@ -270,14 +270,16 @@ func (s *Server) videoReview(c echo.Context) error {
 		return err
 	}
 	type qa struct {
-		Rule         string `json:"rule"`
-		RuleVersion  int    `json:"rule_version"`
-		Severity     string `json:"severity"`
-		Passed       bool   `json:"passed"`
-		Reason       string `json:"reason"`
-		SuggestedFix string `json:"suggested_fix"`
+		ArtifactID   int64     `json:"artifact_id"`
+		Rule         string    `json:"rule"`
+		RuleVersion  int       `json:"rule_version"`
+		Severity     string    `json:"severity"`
+		Passed       bool      `json:"passed"`
+		Reason       string    `json:"reason"`
+		SuggestedFix string    `json:"suggested_fix"`
+		CreatedAt    time.Time `json:"created_at"`
 	}
-	rows, err := s.DB.Query(ctx, `SELECT rule, rule_version, severity, passed, reason, suggested_fix FROM qa_results WHERE artifact_id = $1 ORDER BY id`, id)
+	rows, err := s.DB.Query(ctx, `SELECT artifact_id, rule, rule_version, severity, passed, reason, suggested_fix, created_at FROM qa_results WHERE artifact_id = $1 ORDER BY id`, id)
 	if err != nil {
 		return err
 	}

@@ -60,9 +60,11 @@ export function ReviewPage({ id }: { id: number }) {
     </Card>
     <div className="flex flex-col gap-4">
       <Card title={t("review.qa")}>
+        <p className="mono mb-2 text-sm">{t("review.qa.summary", { pass: qa.filter((q) => q.passed).length, fail: qa.filter((q) => !q.passed).length })}</p>
         <ul className="flex flex-col gap-2">{qa.map((q) => <li key={q.rule} className="inner flex flex-wrap items-baseline gap-x-3">
           <span className={`mono text-sm ${q.passed ? "text-green" : q.severity === "blocking" ? "text-red" : "text-amber"}`}><span aria-hidden>● </span>{q.passed ? t("review.qa.pass") : q.severity === "blocking" ? t("review.qa.fail") : t("review.qa.warning")}</span>
           <strong className="mono text-sm">{q.rule}</strong><span className="muted text-xs">{q.severity === "blocking" ? t("review.qa.blocking") : t("review.qa.warning")}</span>
+          <span className="mono muted text-xs">{t("review.qa.version", { n: q.rule_version })} · {t("review.qa.artifact", { id: q.artifact_id })} · {t("review.qa.at", { when: fmtTime(q.created_at, lang) })}</span>
           <span className="w-full text-sm">{q.reason}</span>{!q.passed && q.suggested_fix && <span className="w-full text-sm text-amber">{t("review.qa.fix")}: {q.suggested_fix}</span>}</li>)}</ul>
         <p className="muted mt-3 text-xs">{t("review.qa.aiNote")}</p>
       </Card>
