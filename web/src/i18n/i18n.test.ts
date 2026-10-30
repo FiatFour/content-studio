@@ -16,6 +16,14 @@ describe("translations", () => {
       for (const [k, v] of Object.entries(dictionaries[lang])) expect(v.trim(), `${lang}:${k}`).not.toBe("");
   });
 
+  it("explains every job error class in both languages", () => {
+    // Keep in step with jobs.AllErrorClasses; the Go test TestEveryErrorClassHasThaiAndEnglishExplanation checks the other direction.
+    const classes = ["invalid_input", "auth_or_permission", "rate_limited", "provider_outage", "uncertain_outcome", "transient_network",
+      "validation_failed", "unsupported", "insufficient_local_resources", "internal", "worker_restart", "qa_failed", "script_duration", "cancelled"];
+    for (const lang of ["th", "en"] as const)
+      for (const c of classes) for (const part of ["what", "next"]) expect(dictionaries[lang][`errclass.${c}.${part}`], `${lang}:${c}.${part}`).toBeTruthy();
+  });
+
   it("fills placeholders", () => {
     expect(translate("en", "episodes.episode", { n: 3 })).toBe("Episode 3");
   });

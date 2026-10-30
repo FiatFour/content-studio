@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { api, ApiError, contentUrl, type ArtifactRow, type Character, type EpisodeSummaryText, type Run, type VideoVersion } from "../api";
 import { usePoll } from "../hooks";
 import { useI18n, type Key } from "../i18n";
+import { ErrorExplain, JobPanel } from "../JobPanel";
 import { Bar, Card, StateBadge, agentColor, fmtBytes, fmtTime } from "../ui";
 
 type Detail = {
@@ -61,6 +62,7 @@ export function EpisodeDetail({ id }: { id: number }) {
   const run = d.data?.runs[0];
   const arts = usePoll<{ artifacts: ArtifactRow[] }>(run ? `/runs/${run.id}/artifacts` : null, 2500);
   const [msg, setMsg] = useState("");
+  const [inspect, setInspect] = useState<number | null>(null);
   const act = async (path: string) => {
     try { await api(path, { method: "POST" }); setMsg(""); d.reload(); }
     catch (x) { setMsg(x instanceof ApiError ? x.message : t("app.error")); }
@@ -81,8 +83,10 @@ export function EpisodeDetail({ id }: { id: number }) {
           <div className="mt-2">{j ? <StateBadge state={j.state} /> : <span className="muted mono text-sm">{t("state.pending")}</span>}</div>
           {j && j.state === "running" && (j.progress_total > 0 ? <div className="mt-2"><Bar done={j.progress_done} total={j.progress_total} /><div className="mono mt-1 text-xs">{t("episode.progress", { done: j.progress_done, total: j.progress_total })}</div></div> : <p className="muted mt-2 text-xs">{t("episode.noProgress")}</p>)}
           {j && j.state === "waiting_for_resource" && j.wait_reason && <p className="muted mt-2 text-xs"><strong>{t("episode.waitingWhy")}:</strong> {j.wait_reason}</p>}
-          {j && <div className="muted mono mt-2 text-xs">{t("episode.attempt", { n: j.attempt })}{j.model ? ` · ${j.model}` : ""}</div>}</li>; })}</ol>
-      {failed && <p role="alert" className="mt-3 text-red"><strong>{t("episode.failedWhy")}:</strong> <span className="mono">{failed.error_class}</span> {failed.error_message}</p>}
+          {j && <div className="muted mono mt-2 text-xs">{t("episode.attempt", { n: j.attempt })}{j.model ? ` · ${j.model}` : ""}</div>}
+          {j && <button className="btn mt-2 text-xs" aria-pressed={inspect === j.id} onClick={() => setInspect(inspect === j.id ? null : j.id)}>{t("job.open")}</button>}</li>; })}</ol>
+      {failed && <div role="alert" className="mt-3 text-red"><p><strong>{t("episode.failedWhy")}:</strong> <span className="mono">{failed.error_class}</span> {failed.error_message}</p>
+        {failed.error_class && <ErrorExplain errorClass={failed.error_class} />}</div>}
       <div className="mt-3 flex flex-wrap gap-2">
         {run.state === "running" && <button className="btn btn-danger" onClick={() => void act(`/runs/${run.id}/cancel`)}>{t("episode.cancelRun")}</button>}
         {run.state === "failed" && <button className="btn btn-primary" onClick={() => void act(`/runs/${run.id}/retry`)}>{t("episode.retryRun")}</button>}
@@ -91,7 +95,8 @@ export function EpisodeDetail({ id }: { id: number }) {
       {msg && <p role="alert" className="mt-2 text-red">{msg}</p>}
       <p className="muted mt-2 text-xs">{t("episode.rerenderHelp")}</p>
     </Card>}
-    {d.data.runs.length > 1 && <Card title={t("episode.runs")}><ul className="flex flex-col gap-2">{d.data.runs.map((r) => { const why = r.jobs.find((j) => j.state === "failed");
+    {inspect !== null && <JobPanel jobId={inspect} onClose={() => setInspect(null)} />}
+    {d.data.runs.length > 1 &&<Card title={t("episode.runs")}><ul className="flex flex-col gap-2">{d.data.runs.map((r) => { const why = r.jobs.find((j) => j.state === "failed");
       return <li key={r.id} className="inner"><div className="flex flex-wrap items-center gap-3"><strong>#{r.id}</strong><span>{t(`run.${r.kind}` as Key)}</span><StateBadge state={r.state} />
         {r.kind === "rewrite" && r.parent_run_id !== null && <span className="muted text-sm">{t("episode.rewriteOf", { id: r.parent_run_id })}</span>}</div>
         {r.feedback && <p className="muted mt-2 text-sm"><strong>{t("episode.rewriteWhy")}:</strong> {r.feedback}</p>}
