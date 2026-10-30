@@ -56,6 +56,12 @@ export type Character = {
   arrives_on: string | null; status: CharacterStatus; status_since: string | null; lora_name: string; trigger_token: string;
 };
 export type EpisodeSummaryText = { summary: string; characters_present: string[]; open_threads: string[]; updated_at: string };
+export type NotifEvent = { event: string; enabled: boolean; default: boolean; implemented: boolean };
+export type NotifDelivery = { event: string; ok: boolean; http_status: number | null; error: string; at: string };
+export type Notifications = {
+  configured: boolean; suffix?: string; events: NotifEvent[]; recent_deliveries: NotifDelivery[]; last_delivery?: NotifDelivery;
+};
+export type NotifTestResult = { ok: boolean; http_status: number | null; error: string };
 export type System = {
   cpu_pct?: number; ram_used_mib?: number; ram_total_mib?: number; vram_used_mib?: number; vram_total_mib?: number;
   disk_free_gib?: number; disk_total_gib?: number; gpu_slot_stage: string | null; gpu_slot_episode: string | null;

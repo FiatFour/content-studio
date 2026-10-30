@@ -9,6 +9,7 @@ import { EpisodeDetail } from "./pages/EpisodeDetail";
 import { ReviewPage, ReviewQueue } from "./pages/Review";
 import { LoginScreen } from "./pages/Login";
 import { Security } from "./pages/Security";
+import { Providers } from "./pages/Providers";
 import { LangSwitch } from "./ui";
 
 function useHash(): string[] {
@@ -81,7 +82,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
     { id: "characters", label: t("menu.characters"), to: "#/characters" },
     { id: "review", label: t("menu.review"), to: "#/review" },
     { id: "security", label: t("menu.security"), to: "#/security" },
-    { id: "providers", label: t("menu.providers"), tag: t("menu.tag.m2") },
+    { id: "providers", label: t("menu.providers"), tag: t("menu.tag.m2"), to: "#/providers" },
     { id: "library", label: t("menu.library"), tag: t("menu.tag.m3") },
   ];
   const chip = (label: string, value: string) => <span className="inner mono whitespace-nowrap text-sm"><span className="muted">{label} </span>{value}</span>;
@@ -111,6 +112,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
         {page === "episodes" && (route[1] ? <EpisodeDetail id={Number(route[1])} /> : <Episodes />)}
         {page === "characters" && <Characters />}
         {page === "security" && <Security />}
+        {page === "providers" && <Providers />}
         {page === "review" && (route[1] ? <ReviewPage id={Number(route[1])} /> : <ReviewQueue />)}
       </main>
     </div>

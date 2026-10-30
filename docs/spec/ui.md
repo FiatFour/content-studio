@@ -50,6 +50,7 @@ Orchestrator `#8FB3D9`, Script `#F28DB2`, Art `#59C9B9`, Voice `#B49AF2`, Render
 2. **Episode production:** episode header and state, 8-stage strip (each stage tagged with its agent colour), 9:16 shot grid with real per-shot status, current-stage details (attempt, provider, model, measured time per shot, ETA computed from measurements), sanitized job log, artifacts so far, Cancel run.
 3. **Review and approval:** version switcher, 9:16 player with subtitle preview, format/stream/duration/cost facts, QA list (pass / warning / AI advice; AI advice never blocks or approves), script and SRT tabs, the decision panel showing the exact version + sha256 with Approve / Request changes / Reject (notes required for the last two), version history.
 4. **Providers and budget (M2):** budget tiles and threshold bar (70 / 90 / 100%), emergency stop, Discord notifications card (webhook status showing only the last 4 characters, event toggles, send test message, sample message, recent deliveries), providers table (separate *enabled* and *health* columns), task-policy table where every blocked route says why.
+   Status: reachable at `#/providers` (the menu item is a real link now). Built so far: the Discord notifications card (#42). Budget and emergency stop show "Not implemented".
 5. **AI agent tower (M4):** see below.
 
 ## Agent tower (M4)
