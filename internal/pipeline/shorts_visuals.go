@@ -26,6 +26,9 @@ type VisualSpec struct {
 	SourcesHeading string
 	// MaxSourceTitles caps the titles listed on the Sources card; the rest are counted ("and N more").
 	MaxSourceTitles int
+	// ImageKind, when set, is written to each still's artifact metadata as "image_kind" (History
+	// & Mystery: "illustration"). Empty for profiles that do not label their stills.
+	ImageKind string
 }
 
 const (

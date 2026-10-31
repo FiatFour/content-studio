@@ -121,6 +121,7 @@ func (s *imagesStage) Run(ctx context.Context, j *jobs.Job, progress func(int, i
 			return nil, jobs.Errorf(jobs.ErrValidationFailed, nil, "shot %d image is %dx%d, expected %dx%d", i+1, cfg.Dx(), cfg.Dy(), w, h)
 		}
 		meta := map[string]any{"prompt": prompt, "negative": negative, "seed": seed, "width": w, "height": h, "style_version": styleVersion}
+		markImageKind(meta, script.visual)
 		if len(loras) > 0 {
 			meta["loras"] = loras
 			meta["trigger_tokens"] = tokens
