@@ -81,6 +81,30 @@ type ClaimCheck struct {
 // normalisation the quote check applies: no case folding, no punctuation or Unicode form changes.
 func normSpace(s string) string { return strings.Join(strings.FieldsFunc(s, unicode.IsSpace), " ") }
 
+// checkQuote is the quote-in-source rule for one citation. text maps source id to its normSpace'd text.
+// It returns an empty code when the quote is in the cited source, else a failure code and message.
+func checkQuote(text map[string]string, sources []SourceText, claimID, sourceID, quote string) (code, msg string) {
+	src, ok := text[sourceID]
+	if !ok {
+		return ClaimSourceUnknown, fmt.Sprintf("claim %s cites source %s, which does not exist for this episode", claimID, sourceID)
+	}
+	q := normSpace(quote)
+	if q != "" && strings.Contains(src, q) {
+		return "", ""
+	}
+	other := ""
+	for _, o := range sources {
+		if o.ID != sourceID && q != "" && strings.Contains(text[o.ID], q) {
+			other = o.ID
+			break
+		}
+	}
+	if other != "" {
+		return ClaimQuoteWrongSrc, fmt.Sprintf("claim %s quotes text that is in source %s, not in the cited source %s", claimID, other, sourceID)
+	}
+	return ClaimQuoteNotFound, fmt.Sprintf("the quote of claim %s does not appear word for word in source %s. Copy a passage exactly from that source", claimID, sourceID)
+}
+
 // CheckShortsClaims runs the deterministic claim rules. It is pure: it reads no store and calls no model.
 // Messages name claim and source ids, never quote text, so they are safe to show and to feed back to the model.
 func CheckShortsClaims(s *ShortsScript, sources []SourceText) ClaimCheck {
@@ -98,26 +122,8 @@ func CheckShortsClaims(s *ShortsScript, sources []SourceText) ClaimCheck {
 			fail(ClaimDuplicateID, "claim id %s is used twice", c.ID)
 		}
 		claimIDs[c.ID] = true
-		src, ok := text[c.SourceID]
-		if !ok {
-			fail(ClaimSourceUnknown, "claim %s cites source %s, which does not exist for this episode", c.ID, c.SourceID)
-			continue
-		}
-		q := normSpace(c.Quote)
-		if q != "" && strings.Contains(src, q) {
-			continue
-		}
-		other := ""
-		for _, o := range sources {
-			if o.ID != c.SourceID && q != "" && strings.Contains(text[o.ID], q) {
-				other = o.ID
-				break
-			}
-		}
-		if other != "" {
-			fail(ClaimQuoteWrongSrc, "claim %s quotes text that is in source %s, not in the cited source %s", c.ID, other, c.SourceID)
-		} else {
-			fail(ClaimQuoteNotFound, "the quote of claim %s does not appear word for word in source %s. Copy a passage exactly from that source", c.ID, c.SourceID)
+		if code, msg := checkQuote(text, sources, c.ID, c.SourceID, c.Quote); code != "" {
+			fail(code, "%s", msg)
 		}
 	}
 	used := map[string]bool{}
