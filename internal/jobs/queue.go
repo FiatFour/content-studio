@@ -153,6 +153,17 @@ func conflictf(format string, args ...any) error {
 // "rerender" run has the run whose inputs it reuses. Rewrite runs are created only by the queue itself
 // (startRewrite), because they need feedback; the database rejects any other combination.
 func (q *Queue) CreateRun(ctx context.Context, episodeID int64, kind string, parentRunID *int64) (int64, error) {
+	var runID int64
+	err := pgx.BeginFunc(ctx, q.DB, func(tx pgx.Tx) error {
+		var err error
+		runID, err = q.CreateRunTx(ctx, tx, episodeID, kind, parentRunID)
+		return err
+	})
+	return runID, err
+}
+
+// CreateRunTx is CreateRun inside the caller's transaction, so the caller can check and create atomically.
+func (q *Queue) CreateRunTx(ctx context.Context, tx pgx.Tx, episodeID int64, kind string, parentRunID *int64) (int64, error) {
 	plan, err := q.episodePlan(ctx, episodeID)
 	if err != nil {
 		return 0, err
@@ -162,14 +173,11 @@ func (q *Queue) CreateRun(ctx context.Context, episodeID int64, kind string, par
 		return 0, fmt.Errorf("unknown run kind %q", kind)
 	}
 	var runID int64
-	err = pgx.BeginFunc(ctx, q.DB, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `INSERT INTO workflow_runs (episode_id, profile, kind, parent_run_id, state)
-			VALUES ($1, $2, $3, $4, $5) RETURNING id`, episodeID, plan.Profile, kind, parentRunID, RunRunning).Scan(&runID); err != nil {
-			return err
-		}
-		return insertJob(ctx, tx, runID, stages[0], 0, plan.resource(stages[0]))
-	})
-	return runID, err
+	if err := tx.QueryRow(ctx, `INSERT INTO workflow_runs (episode_id, profile, kind, parent_run_id, state)
+		VALUES ($1, $2, $3, $4, $5) RETURNING id`, episodeID, plan.Profile, kind, parentRunID, RunRunning).Scan(&runID); err != nil {
+		return 0, err
+	}
+	return runID, insertJob(ctx, tx, runID, stages[0], 0, plan.resource(stages[0]))
 }
 
 func insertJob(ctx context.Context, tx pgx.Tx, runID int64, stage string, seq int, resource string) error {

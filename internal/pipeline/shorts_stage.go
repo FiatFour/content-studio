@@ -69,7 +69,10 @@ func (d *Deps) latestSources(ctx context.Context, episodeID int64) ([]sourceDoc,
 
 // shortsPrompt builds the prompt. Source text is untrusted data: it sits between delimiters that
 // carry a nonce taken from the sources' hashes, and the prompt says it is never instructions.
-func shortsPrompt(e Episode, srcs []sourceDoc, feedback string) string {
+//
+// runFeedback is the note an automatic rewrite run carries (empty for an ordinary run); retryFeedback is
+// why the stage itself rejected the previous try. Both are kept when both are set.
+func shortsPrompt(e Episode, srcs []sourceDoc, runFeedback, retryFeedback string) string {
 	nonce := sha256Hex([]byte(strings.Join(func() []string {
 		h := make([]string, len(srcs))
 		for i, s := range srcs {
@@ -99,8 +102,12 @@ Sources (each between its own BEGIN and END line):
 	for _, s := range srcs {
 		fmt.Fprintf(&b, "\n=====BEGIN SOURCE %s %s (%s)=====\n%s\n=====END SOURCE %s %s=====\n", s.art.ItemKey, nonce, normSpace(s.title), s.text, s.art.ItemKey, nonce)
 	}
-	if feedback != "" {
-		b.WriteString("\nYour previous answer was rejected: " + feedback + ". Fix that and answer again.")
+	if runFeedback != "" {
+		b.WriteString("\nMeasured feedback from the previous version of this episode, which was rejected when it was spoken. " +
+			"Follow it instead of the earlier estimate: " + runFeedback)
+	}
+	if retryFeedback != "" {
+		b.WriteString("\nYour previous answer was rejected: " + retryFeedback + ". Fix that and answer again.")
 	}
 	return b.String()
 }
@@ -131,7 +138,11 @@ func (s *shortsScriptStage) InputHash(ctx context.Context, j *jobs.Job) (string,
 	if err != nil {
 		return "", err
 	}
-	return d.inputHash(ctx, j.RunID, map[string]any{"episode": e, "sources": used, "llm": llm.Info(),
+	feedback, err := d.runFeedback(ctx, j.RunID)
+	if err != nil {
+		return "", err
+	}
+	return d.inputHash(ctx, j.RunID, map[string]any{"episode": e, "sources": used, "feedback": feedback, "llm": llm.Info(),
 		"retries": d.Settings.ScriptRetries, "prompt": shortsPromptVersion})
 }
 
@@ -160,7 +171,11 @@ func (s *shortsScriptStage) Run(ctx context.Context, j *jobs.Job, progress func(
 		return nil, err
 	}
 	texts := sourceTexts(srcs)
-	prompt := shortsPrompt(e, srcs, "")
+	runFeedback, err := d.runFeedback(ctx, j.RunID)
+	if err != nil {
+		return nil, err
+	}
+	prompt := shortsPrompt(e, srcs, runFeedback, "")
 	tries := max(d.Settings.ScriptRetries, 1)
 	var lastErr string
 	for i := 0; i < tries; i++ {
@@ -179,7 +194,7 @@ func (s *shortsScriptStage) Run(ctx context.Context, j *jobs.Job, progress func(
 			return s.store(j, info, script, srcs, prompt, i+1)
 		}
 		d.Log.Warn("shorts script rejected", "job_id", j.ID, "try", i+1, "reason", lastErr)
-		prompt = shortsPrompt(e, srcs, lastErr)
+		prompt = shortsPrompt(e, srcs, runFeedback, lastErr)
 	}
 	return nil, jobs.Errorf(jobs.ErrValidationFailed, nil, "shorts script rejected %d times; last reason: %s", tries, lastErr)
 }

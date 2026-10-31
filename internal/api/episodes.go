@@ -264,23 +264,33 @@ func (s *Server) startRun(c echo.Context) error {
 	if !s.Queue.HasPlan(profile) {
 		return fail(http.StatusNotImplemented, "Not implemented: the "+profile+" profile cannot run yet")
 	}
-	var runs int
-	if err := s.DB.QueryRow(ctx, `SELECT count(*) FROM workflow_runs WHERE episode_id = $1`, id).Scan(&runs); err != nil {
-		return err
-	}
-	if runs > 0 {
-		return fail(http.StatusConflict, "this episode already has a run; retry or re-render it instead")
-	}
-	if profile == pipeline.KnowledgeShortsID {
-		var sources int
-		if err := s.DB.QueryRow(ctx, `SELECT count(*) FROM artifacts WHERE episode_id = $1 AND type = 'source'`, id).Scan(&sources); err != nil {
+	// One transaction with the episode row locked: a concurrent start waits, then sees this run.
+	var runID int64
+	err = pgx.BeginFunc(ctx, s.DB, func(tx pgx.Tx) error {
+		var locked int64
+		if err := tx.QueryRow(ctx, `SELECT id FROM episodes WHERE id = $1 FOR UPDATE`, id).Scan(&locked); err != nil {
 			return err
 		}
-		if sources == 0 {
-			return fail(http.StatusConflict, "add at least one source before running a Knowledge Shorts episode")
+		var runs int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM workflow_runs WHERE episode_id = $1`, id).Scan(&runs); err != nil {
+			return err
 		}
-	}
-	runID, err := s.Queue.CreateRun(ctx, id, "full", nil)
+		if runs > 0 {
+			return fail(http.StatusConflict, "this episode already has a run; retry or re-render it instead")
+		}
+		if profile == pipeline.KnowledgeShortsID {
+			var sources int
+			if err := tx.QueryRow(ctx, `SELECT count(*) FROM artifacts WHERE episode_id = $1 AND type = 'source'`, id).Scan(&sources); err != nil {
+				return err
+			}
+			if sources == 0 {
+				return fail(http.StatusConflict, "add at least one source before running a Knowledge Shorts episode")
+			}
+		}
+		var err error
+		runID, err = s.Queue.CreateRunTx(ctx, tx, id, "full", nil)
+		return err
+	})
 	if err != nil {
 		return err
 	}
