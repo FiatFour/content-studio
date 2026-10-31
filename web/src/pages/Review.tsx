@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, ApiError, contentUrl, type EpisodeSummary, type Review, type ShortsReview } from "../api";
+import { api, ApiError, contentUrl, type EpisodeSummary, type HistoryReview, type Review, type ShortsReview } from "../api";
+import { certaintyBadge, certaintyCounts, certaintyLabelKey } from "../history";
 import { usePoll } from "../hooks";
 import { useI18n, type Key } from "../i18n";
 import { Card, StateBadge, fmtBytes, fmtTime } from "../ui";
@@ -69,6 +70,7 @@ export function ReviewPage({ id }: { id: number }) {
         <p className="muted mt-3 text-xs">{t("review.qa.aiNote")}</p>
       </Card>
       {r.data.shorts && <ShortsCard s={r.data.shorts} />}
+      {r.data.history && <HistoryCard h={r.data.history} />}
       <Card>
         <div role="tablist" className="mb-3 flex gap-2">{(["script", "srt"] as const).map((k) => <button key={k} role="tab" aria-selected={tab === k} className="btn" style={{ borderColor: tab === k ? "var(--color-blue)" : undefined }} onClick={() => setTab(k)}>{t(`review.tab.${k}` as Key)}</button>)}</div>
         <pre className="inner max-h-96 overflow-auto whitespace-pre-wrap text-sm">{(tab === "script" ? (script && prettyJSON(script)) : srt?.replaceAll("​", "")) ?? t("app.loading")}</pre>
@@ -120,6 +122,40 @@ function ShortsCard({ s }: { s: ShortsReview }) {
     <p className={`mono text-sm ${cc?.ok ? "text-green" : "text-red"}`}>{cc == null ? t("review.shorts.checkNone") : cc.ok ? t("review.shorts.checkOk", { claims: cc.claims, beats: cc.beats }) : t("review.shorts.checkFail", { n: cc.failures.length })}</p>
     {cc && !cc.ok && <ul className="text-sm">{cc.failures.map((f, i) => <li key={i}>{f.message}</li>)}</ul>}
     <p className="muted mt-3 text-xs">{t("review.shorts.note")}</p>
+  </Card>;
+}
+
+// HistoryCard lists what a History & Mystery video rests on: sources, each claim with its certainty,
+// and the findings of the checks. It only shows data; it has no button and cannot approve anything.
+// Source titles, quotes and claim text are owner or model text: React text only.
+function HistoryCard({ h }: { h: HistoryReview }) {
+  const { t } = useI18n();
+  const cc = h.claim_check;
+  return <Card title={t("review.history.title")}>
+    <p role="note" className="inner mb-3 text-sm font-semibold">{t("review.history.illustration")}</p>
+    {h.unreadable && <p role="alert" className="mb-2 text-sm text-red">{t("review.history.unreadable", { why: h.unreadable })}</p>}
+    <h3 className="font-semibold">{t("review.history.sources")}</h3>
+    <ul className="mb-3 flex flex-col gap-1">{h.sources.map((x) => <li key={x.artifact_id} className="mono break-all text-xs">{t("review.history.sourceLine", { id: x.source_id, title: x.title, n: x.version, sha: x.sha256.slice(0, 12) })}</li>)}</ul>
+    <h3 className="font-semibold">{t("review.history.claims")}</h3>
+    {h.claims.length === 0 ? <p className="muted text-sm">{t("review.history.noClaims")}</p> : <>
+      <p className="mono muted mb-1 text-xs">{t("review.history.counts", certaintyCounts(h.certainty_counts))}</p>
+      <ul className="mb-3 flex flex-col gap-2">{h.claims.map((c) => {
+        const b = certaintyBadge(c.certainty);
+        return <li key={c.id} className="inner text-sm">
+          <span className={`mono mr-2 text-xs font-semibold ${b.tone}`}><span aria-hidden>{b.mark} </span>{t(certaintyLabelKey(c.certainty))}</span>
+          <strong className="mono">{c.id}</strong> · <span>{c.text}</span>
+          <div className="muted mono text-xs">{c.date_text ? `${t("review.history.claimDate", { date: c.date_text })} · ` : ""}{h.claim_beats[c.id] ? t("review.history.claimBeats", { beats: h.claim_beats[c.id].join(", ") }) : ""}</div>
+          {c.sources.map((s, i) => <div key={i} className="text-xs"><span className="muted mono">{t("review.history.claimSource", { id: s.source_id })}</span> · {t("review.history.quote")}: <q>{s.quote}</q></div>)}
+        </li>;
+      })}</ul></>}
+    <h3 className="font-semibold">{t("review.history.check")}</h3>
+    <p className={`mono text-sm ${cc?.ok ? "text-green" : "text-red"}`}>{cc == null ? t("review.history.checkNone") : cc.ok ? t("review.history.checkOk", { claims: cc.claims, beats: cc.beats }) : t("review.history.checkFail", { n: cc.failures.length })}</p>
+    {cc && !cc.ok && <ul className="text-sm">{cc.failures.map((f, i) => <li key={i}>{f.message}</li>)}</ul>}
+    <h3 className="mt-3 font-semibold">{t("review.history.findings")}</h3>
+    {h.findings.length === 0 ? <p className="mono text-sm text-green">{t("review.history.noFindings")}</p> :
+      <ul className="flex flex-col gap-1">{h.findings.map((f, i) => <li key={i} className="text-sm">
+        <span className={`mono mr-2 text-xs ${f.severity === "blocking" ? "text-red" : "text-amber"}`}><span aria-hidden>● </span>{f.severity === "blocking" ? t("review.history.findingBlocking") : t("review.history.findingWarning")}</span>{f.message}</li>)}</ul>}
+    <p className="muted mt-3 text-xs">{t("review.history.note")}</p>
   </Card>;
 }
 

@@ -53,6 +53,10 @@ func (s *qaStage) Run(ctx context.Context, j *jobs.Job, progress func(int, int))
 	if isShorts {
 		info.Model = knowledgeShortsSpec.QARules
 	}
+	isHistory := isHistoryScript(scriptArt)
+	if isHistory {
+		info.Model = historyMysterySpec.QARules
+	}
 	if err := d.Queue.SetProvider(ctx, j.ID, info.Provider, info.Model); err != nil {
 		return nil, err
 	}
@@ -75,6 +79,13 @@ func (s *qaStage) Run(ctx context.Context, j *jobs.Job, progress func(int, int))
 	results := d.runQA(ctx, j, e, video, specArt, progress)
 	if isShorts {
 		more, err := d.shortsQA(ctx, e, scriptArt, video, specArt)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, more...)
+	}
+	if isHistory {
+		more, err := d.historyQA(ctx, e, scriptArt, video, specArt)
 		if err != nil {
 			return nil, err
 		}
