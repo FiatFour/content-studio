@@ -123,6 +123,10 @@ func (d *Deps) loadScript(ctx context.Context, j *jobs.Job) (*Script, artifacts.
 		s, err := d.shortsScript(ctx, a, data)
 		return s, a, err
 	}
+	if a.Meta["profile"] == HistoryMysteryID {
+		s, err := d.historyScript(ctx, a, data)
+		return s, a, err
+	}
 	var s Script
 	if err := json.Unmarshal(data, &s); err != nil {
 		return nil, a, err

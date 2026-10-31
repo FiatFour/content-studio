@@ -236,8 +236,8 @@ func (s *Server) createEpisode(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if spec.ID == pipeline.KnowledgeShortsID {
-		// A Shorts script needs sources, and sources are added to an episode that exists, so the run
+	if takesSources(spec.ID) {
+		// A Shorts or History script needs sources, and sources are added to an episode that exists, so the run
 		// starts later (POST /api/episodes/:id/run) once the owner has pasted at least one.
 		return c.JSON(http.StatusCreated, map[string]any{"episode_id": episodeID, "run_id": nil})
 	}
@@ -278,13 +278,13 @@ func (s *Server) startRun(c echo.Context) error {
 		if runs > 0 {
 			return fail(http.StatusConflict, "this episode already has a run; retry or re-render it instead")
 		}
-		if profile == pipeline.KnowledgeShortsID {
+		if takesSources(profile) {
 			var sources int
 			if err := tx.QueryRow(ctx, `SELECT count(*) FROM artifacts WHERE episode_id = $1 AND type = 'source'`, id).Scan(&sources); err != nil {
 				return err
 			}
 			if sources == 0 {
-				return fail(http.StatusConflict, "add at least one source before running a Knowledge Shorts episode")
+				return fail(http.StatusConflict, "add at least one source before running a "+profile+" episode")
 			}
 		}
 		var err error

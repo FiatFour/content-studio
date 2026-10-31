@@ -42,6 +42,7 @@ type querier interface {
 var projectNames = map[string]string{
 	pipeline.FictionalSeriesID: "Life Sim Sitcom",
 	pipeline.KnowledgeShortsID: "Knowledge Shorts",
+	pipeline.HistoryMysteryID:  "History & Mystery",
 }
 
 // ensureProject returns the single project of a profile, creating it on first use.

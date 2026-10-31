@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/fiat/content-studio/internal/artifacts"
+	"github.com/fiat/content-studio/internal/jobs"
 	"github.com/fiat/content-studio/internal/providers"
 )
 
@@ -121,6 +122,18 @@ func (d *Deps) shortsScript(ctx context.Context, a artifacts.Artifact, data []by
 	if err := json.Unmarshal(data, &ss); err != nil {
 		return nil, err
 	}
+	v := *knowledgeShortsSpec.Visual
+	titles, extra, err := d.sourceCardTitles(ctx, a, v.MaxSourceTitles)
+	if err != nil {
+		return nil, err
+	}
+	return shortsAsScript(&ss, v, titles, extra), nil
+}
+
+// sourceCardTitles returns the titles of the source versions a script was written from (taken from the
+// stored source artifacts named in the script's metadata), in source-id order and cut to max, and how
+// many were left out. Shared by the Knowledge Shorts and History & Mystery Sources cards.
+func (d *Deps) sourceCardTitles(ctx context.Context, a artifacts.Artifact, max int) ([]string, int, error) {
 	var ids []int64
 	if used, ok := a.Meta["sources"].([]any); ok {
 		for _, u := range used {
@@ -136,23 +149,22 @@ func (d *Deps) shortsScript(ctx context.Context, a artifacts.Artifact, data []by
 	if len(ids) > 0 {
 		rows, err := d.DB.Query(ctx, `SELECT item_key, coalesce(meta->>'title', '') FROM artifacts WHERE id = ANY($1) AND type = 'source'`, ids)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		defer rows.Close()
 		for rows.Next() {
 			var x src
 			if err := rows.Scan(&x.key, &x.title); err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 			found = append(found, x)
 		}
 		if err := rows.Err(); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 	}
 	num := func(s string) int { n, _ := strconv.Atoi(strings.TrimPrefix(s, "s")); return n }
 	sort.Slice(found, func(i, j int) bool { return num(found[i].key) < num(found[j].key) })
-	v := *knowledgeShortsSpec.Visual
 	var titles []string
 	for _, x := range found {
 		t := cleanText(x.title, maxCaptionRunes)
@@ -162,11 +174,34 @@ func (d *Deps) shortsScript(ctx context.Context, a artifacts.Artifact, data []by
 		titles = append(titles, t)
 	}
 	extra := 0
-	if len(titles) > v.MaxSourceTitles {
-		extra = len(titles) - v.MaxSourceTitles
-		titles = titles[:v.MaxSourceTitles]
+	if len(titles) > max {
+		extra = len(titles) - max
+		titles = titles[:max]
 	}
-	return shortsAsScript(&ss, v, titles, extra), nil
+	return titles, extra, nil
+}
+
+// historyScript loads a stored History & Mystery script (already hash-checked bytes) and adapts it.
+// The stored script must pass the visual checks again: a stored script that no longer does fails the
+// images stage with a plain message rather than reaching ComfyUI.
+func (d *Deps) historyScript(ctx context.Context, a artifacts.Artifact, data []byte) (*Script, error) {
+	var hs HistoryScript
+	if err := json.Unmarshal(data, &hs); err != nil {
+		return nil, err
+	}
+	titles, extra, err := d.sourceCardTitles(ctx, a, historyVisualSpec.MaxSourceTitles)
+	if err != nil {
+		return nil, err
+	}
+	visuals := make([]string, len(hs.Beats))
+	for i, b := range hs.Beats {
+		visuals[i] = b.Visual
+	}
+	s, err := historyAsScript(&hs, visuals, titles, extra)
+	if err != nil {
+		return nil, jobs.Errorf(jobs.ErrInvalidInput, nil, "the stored history script cannot be illustrated: %v", err)
+	}
+	return s, nil
 }
 
 // addCardCues adds one cue per captioned shot (a Knowledge Shorts title or sources card) over that

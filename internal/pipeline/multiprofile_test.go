@@ -56,6 +56,9 @@ func (g *gpuProbe) enter() func() {
 type routedLLM struct {
 	probe     *gpuProbe
 	fs, short string
+	// history is the History & Mystery script (M6 T7). Only its schema has a "visual" field, so it is
+	// recognised before the Shorts schema, which also has "claims". Empty: History is not routed.
+	history   string
 	mu        sync.Mutex
 	shortCall int
 }
@@ -64,6 +67,9 @@ func (l *routedLLM) Info() providers.Info             { return providers.Info{Pr
 func (l *routedLLM) ReleaseGPU(context.Context) error { return nil }
 func (l *routedLLM) GenerateJSON(_ context.Context, _ string, schema json.RawMessage, _ int) ([]byte, error) {
 	defer l.probe.enter()()
+	if l.history != "" && bytes.Contains(schema, []byte(`"visual"`)) {
+		return []byte(l.history), nil
+	}
 	if bytes.Contains(schema, []byte(`"claims"`)) {
 		l.mu.Lock()
 		l.shortCall++

@@ -169,16 +169,36 @@ var knowledgeShortsSpec = Spec{
 // HistoryMysteryID is the id of the History & Mystery profile (decisions D18 to D20).
 const HistoryMysteryID = "history_mystery"
 
-// historyMystery is registered as a spec only (M6 T1): it has no stages, so it is not runnable and
-// no run may be created for it. Its stages arrive in later M6 tasks.
+// historyMystery is the History & Mystery profile (M6). It became runnable in M6 T7, once its script
+// (T3), visual (T5) and QA (T6) pieces existed.
 type historyMystery struct{}
 
 func (historyMystery) Spec() Spec { return historyMysterySpec }
 
-// Stages returns none: the profile cannot run yet.
-func (historyMystery) Stages(*Deps) map[string]jobs.Stage { return nil }
+// Stages wires the History script stage (T3) and the shared tts, images, subtitles, render and qa
+// stages. The shared stages read the History script through the adapter in loadScript, and qa adds
+// the History rules for a History script, so none of them is forked.
+func (historyMystery) Stages(d *Deps) map[string]jobs.Stage {
+	return map[string]jobs.Stage{
+		"script":    &historyScriptStage{d},
+		"tts":       &ttsStage{d},
+		"images":    &imagesStage{d},
+		"subtitles": &subtitlesStage{d},
+		"render":    &renderStage{d},
+		"qa":        &qaStage{d},
+	}
+}
 
-var historyMysterySpec = Spec{ID: HistoryMysteryID, MinDurationS: 60, MaxDurationS: 120, QARules: "qa-rules-history-v1"}
+// Resources say which stages hold the GPU (the same as the other profiles: render and qa use only ffmpeg).
+var historyMysterySpec = Spec{
+	ID: HistoryMysteryID, MinDurationS: 60, MaxDurationS: 120, QARules: "qa-rules-history-v1",
+	Stages: map[string][]string{
+		"full":     {"script", "tts", "images", "subtitles", "render", "qa"},
+		"rerender": {"render", "qa"},
+	},
+	Resources: map[string]string{"script": "gpu", "tts": "gpu", "images": "gpu"},
+	Visual:    &historyVisualSpec,
+}
 
 // Profiles is the registry of every content profile the app knows.
 var Profiles = NewRegistry(fictionalSeries{}, historyMystery{}, knowledgeShorts{})

@@ -88,7 +88,7 @@ The QA stage is shared. After the checks above it asks whether the run's script 
 The claim rules prove the quote is in the source, not that the claim is true. The review page says so and the owner decides. Approval and export are unchanged: bound to the exact artifact id and sha256, explicit click, no AI input.
 
 ### History & Mystery rules (rule set `qa-rules-history-v1`, M6 T6)
-Same shared QA stage: when the script artifact's meta says `history_mystery`, the rules in `internal/pipeline/history_qa.go` are added (the profile stays spec-only until M6 T7, so no run reaches them yet; they are tested on stored scripts). All deterministic, version 1. The script stage only validates the schema, narration length and quotes; the hedge and number checks of `CheckHistoryScript` run for the first time here.
+Same shared QA stage: when the script artifact's meta says `history_mystery`, the rules in `internal/pipeline/history_qa.go` are added (the profile became runnable in M6 T7, so a History run reaches them in the real QA stage; they are also tested on stored scripts). All deterministic, version 1. The script stage only validates the schema, narration length and quotes; the hedge and number checks of `CheckHistoryScript` run for the first time here.
 - `history_duration_range` (blocking): 60 to 120 s and within 10% of the target.
 - `history_narration_budget` (blocking): narration characters are inside the bounds for the speech time left after the lead, tail, two cards and the gaps (`shortsSpeechSeconds`, the timeline constants), recomputed from the stored script.
 - `history_sources_intact` (blocking), `history_sources_current` (warning): as for Shorts.

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { profileLabel } from "../profiles";
+import { profileLabel, takesSources } from "../profiles";
 import { api, ApiError, contentUrl, type ArtifactRow, type Character, type EpisodeSummaryText, type Run, type VideoVersion } from "../api";
 import { usePoll } from "../hooks";
 import { useI18n, type Key } from "../i18n";
@@ -78,8 +78,8 @@ export function EpisodeDetail({ id }: { id: number }) {
     <Card><h1 className="font-display text-2xl font-extrabold">{t("episodes.episode", { n: e.number })} · {e.title}</h1>
       <p className="muted mt-1"><strong>{t("episode.idea")}:</strong> {e.idea}</p><p className="muted text-sm">{t(profileLabel(e.profile))} · {t("episodes.target", { s: e.target_duration_s })}</p></Card>
     <CanonCard id={e.id} inStoryDate={e.in_story_date} summary={summary} />
-    {e.profile === "knowledge_shorts" && <SourcesCard episodeId={e.id} />}
-    {!run && e.profile === "knowledge_shorts" && <Card title={t("episode.start.title")}>
+    {takesSources(e.profile) && <SourcesCard episodeId={e.id} />}
+    {!run && takesSources(e.profile) && <Card title={t("episode.start.title")}>
       <p className="muted text-sm">{t("episode.start.help")}</p>
       <div className="mt-3"><button className="btn btn-primary" onClick={() => void act(`/episodes/${e.id}/run`)}>{t("episode.start.button")}</button></div>
       {msg && <p role="alert" className="mt-2 text-red">{msg}</p>}

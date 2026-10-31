@@ -57,6 +57,7 @@
   "episodes.form.length": "Target length (seconds)",
   "episodes.form.profile": "Content profile",
   "episodes.form.shortsHint": "Knowledge Shorts turns sources you paste into a short explainer. Create the episode, add at least one source on its page, then start the run. Nothing is fetched from the internet.",
+  "episodes.form.historyHint": "History & Mystery turns sources you paste into a short history video. Create the episode, add at least one source on its page, then start the run. Stills are illustrations, never evidence, and nothing is fetched from the internet.",
   "episodes.form.ideaHintShorts": "State the topic or question the short answers, in Thai (at least 10 characters)",
   "episode.start.title": "Start this episode",
   "episode.start.help": "Not started yet. Add at least one source above (pasted text, with a title), then start the run. The script is written only from your sources.",

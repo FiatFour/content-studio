@@ -94,7 +94,10 @@ func TestSinglePlanQueueRefusesAProfileItHasNoPlanFor(t *testing.T) {
 	}
 }
 
-func TestHistoryMysteryIsRefusedAsNotImplemented(t *testing.T) {
+// T7 edit: this was TestHistoryMysteryIsRefusedAsNotImplemented. The single-plan queue still has no plan
+// for history_mystery, so it must refuse it with 501 and write nothing; the multi-profile server that
+// creates a History episode is covered by TestMultiProfileServer* in multiprofile_test.go.
+func TestSinglePlanQueueRefusesHistoryMysteryToo(t *testing.T) {
 	ts, db := serverDB(t)
 	for _, secs := range []int{59, 121} {
 		code, body := call(t, ts, "POST", "/api/episodes", "", episodeBody("history_mystery", secs))
