@@ -166,8 +166,22 @@ var knowledgeShortsSpec = Spec{
 	},
 }
 
+// HistoryMysteryID is the id of the History & Mystery profile (decisions D18 to D20).
+const HistoryMysteryID = "history_mystery"
+
+// historyMystery is registered as a spec only (M6 T1): it has no stages, so it is not runnable and
+// no run may be created for it. Its stages arrive in later M6 tasks.
+type historyMystery struct{}
+
+func (historyMystery) Spec() Spec { return historyMysterySpec }
+
+// Stages returns none: the profile cannot run yet.
+func (historyMystery) Stages(*Deps) map[string]jobs.Stage { return nil }
+
+var historyMysterySpec = Spec{ID: HistoryMysteryID, MinDurationS: 60, MaxDurationS: 120, QARules: "qa-rules-history-v1"}
+
 // Profiles is the registry of every content profile the app knows.
-var Profiles = NewRegistry(fictionalSeries{}, knowledgeShorts{})
+var Profiles = NewRegistry(fictionalSeries{}, historyMystery{}, knowledgeShorts{})
 
 // FictionalSeriesSpec returns the Fictional Series profile data.
 func FictionalSeriesSpec() Spec { return fictionalSeriesSpec }

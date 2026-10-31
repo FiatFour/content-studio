@@ -16,7 +16,7 @@ func TestRegistryLookup(t *testing.T) {
 	if _, ok := pipeline.Profiles.Get("nope"); ok {
 		t.Fatal("unknown id must not be found")
 	}
-	if got := pipeline.Profiles.IDs(); !reflect.DeepEqual(got, []string{"fictional_series", "knowledge_shorts"}) {
+	if got := pipeline.Profiles.IDs(); !reflect.DeepEqual(got, []string{"fictional_series", "history_mystery", "knowledge_shorts"}) {
 		t.Fatalf("ids = %v", got)
 	}
 }
@@ -36,6 +36,26 @@ func TestKnowledgeShortsIsASpecOnly(t *testing.T) {
 	}
 	if !pipeline.FictionalSeriesSpec().Runnable() {
 		t.Fatal("fictional_series must be runnable")
+	}
+}
+
+func TestHistoryMysteryIsASpecOnly(t *testing.T) {
+	p, ok := pipeline.Profiles.Get(pipeline.HistoryMysteryID)
+	if !ok {
+		t.Fatal("history_mystery not registered")
+	}
+	s := p.Spec()
+	if s.MinDurationS != 60 || s.MaxDurationS != 120 {
+		t.Fatalf("duration range %d-%d, want 60-120", s.MinDurationS, s.MaxDurationS)
+	}
+	if s.Runnable() || len(p.Stages(nil)) != 0 {
+		t.Fatal("history_mystery must not be runnable")
+	}
+	if _, ok := pipeline.RunnablePlans()[pipeline.HistoryMysteryID]; ok {
+		t.Fatal("history_mystery must have no runnable plan")
+	}
+	if _, ok := (&pipeline.Deps{}).RunnableStages()[pipeline.HistoryMysteryID]; ok {
+		t.Fatal("history_mystery must have no runnable stages")
 	}
 }
 

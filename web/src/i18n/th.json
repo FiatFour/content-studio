@@ -65,6 +65,7 @@
   "episodes.form.lengthHint": "{min} ถึง {max} วินาที ตรวจ QA ที่ ±10%",
   "profile.fictional_series": "ซีรีส์สมมติ (Fictional Series)",
   "profile.knowledge_shorts": "Knowledge Shorts",
+  "profile.history_mystery": "ประวัติศาสตร์และปริศนา",
   "profile.unknown": "ไม่รู้จักโปรไฟล์",
   "episodes.form.submit": "เริ่มสร้างตอน",
   "episodes.form.submitting": "กำลังส่ง…",
