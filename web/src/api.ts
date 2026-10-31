@@ -55,8 +55,18 @@ export type ShortsReview = {
   claim_beats: Record<string, number[]>; beats: number; unreadable?: string;
   claim_check: { ok: boolean; claims: number; beats: number; failures: { code: string; message: string }[] } | null;
 };
+export type HistoryClaim = {
+  id: string; text: string; certainty: string; date_text: string; sources: { source_id: string; quote: string }[];
+};
+export type HistoryFinding = { code: string; severity: "blocking" | "warning"; claim_id?: string; beat?: number; message: string };
+export type HistoryReview = {
+  sources: { source_id: string; artifact_id: number; title: string; version: number; sha256: string }[];
+  claims: HistoryClaim[]; claim_beats: Record<string, number[]>; beats: number; unreadable?: string;
+  claim_check: { ok: boolean; claims: number; beats: number; failures: { code: string; message: string }[] } | null;
+  findings: HistoryFinding[]; certainty_counts: Record<string, number>; stills_kind: string;
+};
 export type Review = {
-  video: VideoVersion; episode_id: number; qa: QA[]; shorts?: ShortsReview;
+  video: VideoVersion; episode_id: number; qa: QA[]; shorts?: ShortsReview; history?: HistoryReview;
   decisions: { id: number; sha256: string; decision: string; notes: string; reviewer: string; created_at: string }[];
   exports: { id: number; file_name: string; sha256: string; created_at: string }[];
   script_artifact_id: number | null; subtitles_artifact_id: number | null; versions: VideoVersion[];

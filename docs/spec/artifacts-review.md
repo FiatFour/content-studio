@@ -87,6 +87,19 @@ The QA stage is shared. After the checks above it asks whether the run's script 
 - `shorts_sources_current` (warning): a newer version of a used source exists. The script is still checked against the versions it was made from.
 The claim rules prove the quote is in the source, not that the claim is true. The review page says so and the owner decides. Approval and export are unchanged: bound to the exact artifact id and sha256, explicit click, no AI input.
 
+### History & Mystery rules (rule set `qa-rules-history-v1`, M6 T6)
+Same shared QA stage: when the script artifact's meta says `history_mystery`, the rules in `internal/pipeline/history_qa.go` are added (the profile stays spec-only until M6 T7, so no run reaches them yet; they are tested on stored scripts). All deterministic, version 1. The script stage only validates the schema, narration length and quotes; the hedge and number checks of `CheckHistoryScript` run for the first time here.
+- `history_duration_range` (blocking): 60 to 120 s and within 10% of the target.
+- `history_narration_budget` (blocking): narration characters are inside the bounds for the speech time left after the lead, tail, two cards and the gaps (`shortsSpeechSeconds`, the timeline constants), recomputed from the stored script.
+- `history_sources_intact` (blocking), `history_sources_current` (warning): as for Shorts.
+- `history_claims_quoted` (blocking): every quote of every claim source is in its named source; a claim without sources or a script without claims fails.
+- `history_beats_supported` (blocking): every beat lists claims or is marked `no_factual_claim`, not both.
+- `history_uncertainty_labelled` (blocking): a beat citing a `speculation` or `disputed` claim has a hedging phrase from a visible list (`historyHedgeMarkers`). A phrase-list heuristic: it does not check the phrase hedges the right sentence.
+- `history_numbers_in_sources` (warning): each number in the narration appears literally in some source. Literal only (no number words, no era or unit conversion), so it advises rather than blocks.
+- `history_sources_card` (blocking): the subtitle file has the Sources card heading.
+- `history_stills_labelled` (blocking): every still the render used has metadata `image_kind=illustration` and `evidence=false`. A still not found, or unlabelled, fails; a render with no stills passes (nothing to mislabel).
+Approval and export are unchanged: exact artifact id and sha256, explicit click.
+
 ## Review
 The review page shows:
 - Video player.
@@ -96,6 +109,7 @@ The review page shows:
 - Cost (from M2).
 - Version history.
 - For a Knowledge Shorts video only: the sources used (id, title, version, short sha256), each claim with its source id, the beats that state it and its quote, and the stored claim check, all as plain text, with a note that the check proves the quote is in the source, not that the claim is true. `GET /api/videos/:id/review` adds a read-only `shorts` object for that profile only (the Fictional Series response is unchanged); it carries no file paths. If the stored script file is missing or no longer matches its hash, `shorts.unreadable` says so and no claims are shown.
+- For a History & Mystery video only: the sources used, each claim with a certainty badge (documented, disputed, speculation; mark and word, not colour alone), date text, source quotes and the beats that state it, the stored claim check, the findings of `CheckHistoryScript` run again on the stored script and the hash-checked source texts, and a note that the stills are illustrations, not evidence, and that the checks do not prove a claim true. `GET /api/videos/:id/review` adds a read-only `history` object for that profile only (same unreadable handling and no file paths as `shorts`).
 
 Actions: **Approve**, **Reject (with comment)**, **Request changes**.
 Approval is always an explicit click. Opening, watching, or downloading never implies approval.

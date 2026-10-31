@@ -419,6 +419,14 @@ func (s *Server) videoReview(c echo.Context) error {
 		if sr != nil {
 			resp["shorts"] = sr
 		}
+		// Likewise only a History & Mystery script adds the history block.
+		hr, err := s.loadHistoryReview(ctx, *scriptID)
+		if err != nil {
+			return err
+		}
+		if hr != nil {
+			resp["history"] = hr
+		}
 	}
 	return c.JSON(http.StatusOK, resp)
 }
