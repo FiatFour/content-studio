@@ -65,6 +65,7 @@
   "episodes.form.lengthHint": "{min} to {max} seconds. QA checks ±10%",
   "profile.fictional_series": "Fictional Series",
   "profile.knowledge_shorts": "Knowledge Shorts",
+  "profile.history_mystery": "History & Mystery",
   "profile.unknown": "Unknown profile",
   "episodes.form.submit": "Start episode",
   "episodes.form.submitting": "Sending…",

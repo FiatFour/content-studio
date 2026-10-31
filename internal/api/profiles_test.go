@@ -94,6 +94,29 @@ func TestSinglePlanQueueRefusesAProfileItHasNoPlanFor(t *testing.T) {
 	}
 }
 
+func TestHistoryMysteryIsRefusedAsNotImplemented(t *testing.T) {
+	ts, db := serverDB(t)
+	for _, secs := range []int{59, 121} {
+		code, body := call(t, ts, "POST", "/api/episodes", "", episodeBody("history_mystery", secs))
+		if code != 400 || body["error"] != "target length must be 60 to 120 seconds" {
+			t.Fatalf("%d s: %d %v", secs, code, body)
+		}
+	}
+	for _, secs := range []int{60, 90, 120} {
+		code, body := call(t, ts, "POST", "/api/episodes", "", episodeBody("history_mystery", secs))
+		msg, _ := body["error"].(string)
+		if code != 501 || !strings.HasPrefix(msg, "Not implemented") {
+			t.Fatalf("%d s: %d %v", secs, code, body)
+		}
+	}
+	for _, table := range []string{"projects", "episodes", "workflow_runs"} {
+		var n int
+		if err := db.QueryRow(context.Background(), `SELECT count(*) FROM `+table).Scan(&n); err != nil || n != 0 {
+			t.Fatalf("%s rows = %d, %v", table, n, err)
+		}
+	}
+}
+
 func TestCanonEndpointsStayFictionalSeriesOnly(t *testing.T) {
 	ts, db := serverDB(t)
 	// Even with a knowledge_shorts project present, characters live in the fictional_series one.
