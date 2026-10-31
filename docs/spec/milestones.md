@@ -133,5 +133,16 @@ Knowledge Shorts. This proves the engine is profile-agnostic without major rewri
 
 **Status (T1 to T7 built, owner smoke pending):** both profiles run through one queue and one worker (T7). Verified with fakes only: both reach ready-for-review with QA passed side by side, re-render works for both, approval and export are bound to the exact hash. Not verified: any real LLM, voice, image model or Thai-font render for Shorts (owner smoke, separate issue). Details and limits in `product.md`.
 
+## M6 — Third content profile
+History & Mystery (D18-D20). Proves the profile abstraction a second time. Reuses M5's sources, claim check, narration budget and QA structure. No generic workflow engine; Fictional Series and Knowledge Shorts must not change behaviour.
+- Script schema with beats, claims, certainty (`documented` / `disputed` / `speculation`), date text and one or more sources per claim.
+- Deterministic claim checks: quote is in the source, speculation is labelled in the narration, no date or number in the narration that no source contains.
+- Illustration visuals via the existing image stage, labelled as illustrations.
+- QA rule set `qa-rules-history-v1` and review page sources, claims and certainty.
+- Three profiles run side by side with fake providers.
+- Owner-only: smoke run with real models.
+
+Limits: the quote check proves the text is in the source, not that it is true.
+
 ## Never
 Autonomous publishing. Future publishing adapters may only prepare drafts, and every publish requires explicit human approval of an exact version.
