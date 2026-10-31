@@ -23,7 +23,7 @@ func historyDoc(t *testing.T, secs int, mut func(*pipeline.HistoryScript)) map[s
 			Sources: []pipeline.HistorySource{hs("s1", "ถูกสร้างขึ้นเมื่อปี 1350")}}}}
 	per := strings.Repeat("ก", secs*12/8)
 	for i := 0; i < 8; i++ {
-		b := pipeline.ShortsBeat{Narration: per, ClaimIDs: []string{}, NoFactualClaim: true}
+		b := pipeline.ShortsBeat{Narration: per, ClaimIDs: []string{}, NoFactualClaim: true, Visual: "a quiet misty harbour at dawn, ships at anchor"}
 		if i == 1 {
 			b.ClaimIDs, b.NoFactualClaim = []string{"c1"}, false
 		}

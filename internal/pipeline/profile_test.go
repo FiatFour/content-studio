@@ -39,7 +39,9 @@ func TestKnowledgeShortsIsASpecOnly(t *testing.T) {
 	}
 }
 
-func TestHistoryMysteryIsASpecOnly(t *testing.T) {
+// T7 edit: this was TestHistoryMysteryIsASpecOnly and asserted the profile was not runnable (no stages).
+// It has six stages now, the same as the other two profiles.
+func TestHistoryMysteryIsRunnable(t *testing.T) {
 	p, ok := pipeline.Profiles.Get(pipeline.HistoryMysteryID)
 	if !ok {
 		t.Fatal("history_mystery not registered")
@@ -48,14 +50,17 @@ func TestHistoryMysteryIsASpecOnly(t *testing.T) {
 	if s.MinDurationS != 60 || s.MaxDurationS != 120 {
 		t.Fatalf("duration range %d-%d, want 60-120", s.MinDurationS, s.MaxDurationS)
 	}
-	if s.Runnable() || len(p.Stages(nil)) != 0 {
-		t.Fatal("history_mystery must not be runnable")
+	if !s.Runnable() || len(s.Stages["full"]) != 6 || len(s.Stages["rerender"]) != 2 || s.Visual == nil {
+		t.Fatal("history_mystery must be runnable with its stages and visual spec")
 	}
-	if _, ok := pipeline.RunnablePlans()[pipeline.HistoryMysteryID]; ok {
-		t.Fatal("history_mystery must have no runnable plan")
+	if _, ok := pipeline.RunnablePlans()[pipeline.HistoryMysteryID]; !ok {
+		t.Fatal("history_mystery must have a runnable plan")
 	}
-	if _, ok := (&pipeline.Deps{}).RunnableStages()[pipeline.HistoryMysteryID]; ok {
-		t.Fatal("history_mystery must have no runnable stages")
+	stages := (&pipeline.Deps{}).RunnableStages()[pipeline.HistoryMysteryID]
+	for _, name := range s.Stages["full"] {
+		if stages[name] == nil {
+			t.Fatalf("history_mystery stage %q has no implementation", name)
+		}
 	}
 }
 

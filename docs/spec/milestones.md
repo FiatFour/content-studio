@@ -142,6 +142,8 @@ History & Mystery (D18-D20). Proves the profile abstraction a second time. Reuse
 - Three profiles run side by side with fake providers.
 - Owner-only: smoke run with real models.
 
+**Status (T1 to T7 built, owner smoke pending):** three profiles run through one queue and one worker (T7). Verified with fakes only (fake LLM, images, voice; real Postgres and ffmpeg): Fictional Series, Knowledge Shorts and History & Mystery reach ready-for-review with QA passed side by side, re-render works for all three, approval and export of a History video are bound to the exact hash, the real QA stage runs the History rules on a History run (and fails closed on a changed source), a History rewrite run carries the measured feedback into the prompt, and `POST /api/episodes/:id/run` works with sources and is refused without. Fictional Series and Knowledge Shorts behaviour is unchanged (the only edits to their tests are listed in the T7 PR). Not verified: any real LLM, ComfyUI, TTS or Thai-font render for History (owner smoke, separate issue); the hedge list is a heuristic never run on real Thai model output; the narration budget is an estimate; there is no real-person-name detector for image prompts (franchise list, evidence wording and the prompt instruction only). Details and limits in `product.md`.
+
 Limits: the quote check proves the text is in the source, not that it is true.
 
 ## Never

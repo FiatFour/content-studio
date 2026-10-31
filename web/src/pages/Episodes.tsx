@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { api, ApiError, type EpisodeSummary } from "../api";
-import { profiles, profileLabel, type ProfileId } from "../profiles";
+import { profiles, profileLabel, takesSources, type ProfileId } from "../profiles";
 import { usePoll } from "../hooks";
 import { useI18n, type Key } from "../i18n";
 import { Bar, Card, StateBadge, fmtTime } from "../ui";
@@ -37,13 +37,14 @@ export function Episodes() {
             {profiles.map((x) => <option key={x.id} value={x.id}>{t(profileLabel(x.id))}{x.runnable ? "" : ` (${t("app.notImplemented")})`}</option>)}
           </select>
           {!rng.runnable && <p role="status" className="muted mt-1 text-xs">{t("episodes.form.profileNotImplemented")}</p>}
-          {profile === "knowledge_shorts" && <p role="note" className="muted mt-1 text-xs">{t("episodes.form.shortsHint")}</p>}</div>
+          {profile === "knowledge_shorts" && <p role="note" className="muted mt-1 text-xs">{t("episodes.form.shortsHint")}</p>}
+          {profile === "history_mystery" && <p role="note" className="muted mt-1 text-xs">{t("episodes.form.historyHint")}</p>}</div>
         <div><label htmlFor="ep-len" className="mb-1 block text-sm">{t("episodes.form.length")}</label>
           <input id="ep-len" className="field mono" type="number" min={rng.min} max={rng.max} step={5} value={len} onChange={(e) => setLen(Number(e.target.value))} />
           <p className="muted mt-1 text-xs">{t("episodes.form.lengthHint", { min: rng.min, max: rng.max })}</p></div>
         <div className="md:col-span-2"><label htmlFor="ep-idea" className="mb-1 block text-sm">{t("episodes.form.idea")}</label>
           <textarea id="ep-idea" className="field" rows={4} value={idea} minLength={10} maxLength={2000} required onChange={(e) => setIdea(e.target.value)} />
-          <p className="muted mt-1 text-xs">{t(profile === "knowledge_shorts" ? "episodes.form.ideaHintShorts" : "episodes.form.ideaHint")}</p></div>
+          <p className="muted mt-1 text-xs">{t(takesSources(profile) ? "episodes.form.ideaHintShorts" : "episodes.form.ideaHint")}</p></div>
         {err && <p role="alert" className="text-red md:col-span-2">{err}</p>}
         <div className="md:col-span-2"><button className="btn btn-primary" disabled={busy || !rng.runnable}>{busy ? t("episodes.form.submitting") : t("episodes.form.submit")}</button></div>
       </form>

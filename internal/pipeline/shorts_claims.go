@@ -34,6 +34,10 @@ type ShortsBeat struct {
 	ClaimIDs  []string `json:"claim_ids"`
 	// NoFactualClaim marks framing: a hook, a transition or a call to action that states no fact.
 	NoFactualClaim bool `json:"no_factual_claim"`
+	// Visual is the abstract scene a History & Mystery beat is illustrated with. The Knowledge Shorts
+	// schema does not allow it (additionalProperties is false), so it is always empty there and
+	// omitted from the stored JSON.
+	Visual string `json:"visual,omitempty"`
 }
 
 type ShortsClaim struct {

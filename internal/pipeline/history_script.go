@@ -70,6 +70,15 @@ func ValidateHistoryScript(raw []byte, targetSeconds int) (*HistoryScript, error
 			return nil, fmt.Errorf("beat %d narration is not in Thai", i+1)
 		}
 		chars += utf8.RuneCountInString(b.Narration)
+		// The visual becomes part of an image prompt, so it gets the same checks the images stage
+		// applies later; failing here lets the stage retry with feedback instead of failing at images.
+		v, err := CleanHistoryVisual(b.Visual)
+		if err != nil {
+			return nil, fmt.Errorf("beat %d: %w", i+1, err)
+		}
+		if repeatsSourceText(&s, b, v) {
+			return nil, fmt.Errorf("beat %d: visual description repeats narration, a claim or a quote; describe a scene instead", i+1)
+		}
 	}
 	speech := shortsSpeechSeconds(targetSeconds, len(s.Beats))
 	minChars, maxChars := int(speech*minCharsPerSecond), int(speech*maxCharsPerSecond)

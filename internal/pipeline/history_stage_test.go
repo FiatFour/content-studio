@@ -37,7 +37,7 @@ func historyJSON(t *testing.T, secs int, mut func(*pipeline.HistoryScript)) stri
 	}}
 	per := strings.Repeat("ก", secs*12/8)
 	for i := 0; i < 8; i++ {
-		b := pipeline.ShortsBeat{Narration: per, ClaimIDs: []string{}, NoFactualClaim: true}
+		b := pipeline.ShortsBeat{Narration: per, ClaimIDs: []string{}, NoFactualClaim: true, Visual: "a quiet misty harbour at dawn, ships at anchor"}
 		switch i {
 		case 1:
 			b.ClaimIDs, b.NoFactualClaim = []string{"c1"}, false

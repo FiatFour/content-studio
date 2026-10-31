@@ -17,10 +17,10 @@ import (
 const historyPromptMaxBeats = 12
 
 // historyPromptVersion is recorded on the stored prompt artifact and hashed into the stage's input hash.
-const historyPromptVersion = 1
+const historyPromptVersion = 2
 
-// historyScriptStage is the History & Mystery script stage (M6 T3). The profile is spec-only, so nothing
-// registers it with a worker; NewHistoryMysteryScriptStage lets later tasks and the tests construct it.
+// historyScriptStage is the History & Mystery script stage (M6 T3). The profile registers it as its
+// "script" stage (M6 T7); NewHistoryMysteryScriptStage also lets the tests construct it alone.
 type historyScriptStage struct{ d *Deps }
 
 // NewHistoryMysteryScriptStage returns the History & Mystery script stage.
@@ -53,6 +53,7 @@ Rules:
 - "certainty" separates documented fact from interpretation. "documented": the source states it as established fact. "disputed": the source says historians or researchers disagree about it. "speculation": the source offers it as a theory or guess.
 - The mystery part retells ONLY what a source states is unresolved or debated. Every such claim has certainty "disputed" or "speculation", and the narration of its beat says plainly in Thai that it is a theory or an open question (for example "มีทฤษฎีว่า...", "ยังไม่มีข้อสรุปว่า..."). Never narrate a theory as fact.
 - Do not invent facts, dates, names or theories. Do not add anything from memory, and do not resolve a mystery the sources leave open.
+- Every beat has a "visual": one short English scene description (8 to 200 characters) for the illustration shown while the beat is spoken, for example "a lantern-lit harbour at dusk, ships at anchor". It is an abstract illustration of the setting or mood. Never name a real person, never describe a portrait of a real person, never ask for a photo, photograph or real footage, never name a film, game or other existing work, and do not copy narration, claim text or quotes into it.
 - Every beat lists the ids of the claims it states in "claim_ids". A beat that states no fact (a hook, a transition, a closing line) has an empty "claim_ids" and "no_factual_claim" true. A beat with claims has "no_factual_claim" false. Every claim must be used by at least one beat.
 Return only the JSON object.
 

@@ -88,6 +88,12 @@ type sourceVersion struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// takesSources reports whether a profile writes its script from owner-pasted sources, so its episode
+// waits for a source before its run starts.
+func takesSources(profile string) bool {
+	return profile == pipeline.KnowledgeShortsID || profile == pipeline.HistoryMysteryID
+}
+
 type sourceItem struct {
 	SourceID string `json:"source_id"`
 	Title    string `json:"title"`
@@ -96,7 +102,8 @@ type sourceItem struct {
 	Versions []sourceVersion `json:"versions"`
 }
 
-// sourceEpisode loads the episode's project id and refuses any profile but knowledge_shorts.
+// sourceEpisode loads the episode's project id and refuses any profile that does not take owner-pasted
+// sources (knowledge_shorts and history_mystery).
 func sourceEpisode(c echo.Context, q querier, id int64) (int64, error) {
 	var projectID int64
 	var profile string
@@ -104,8 +111,8 @@ func sourceEpisode(c echo.Context, q querier, id int64) (int64, error) {
 		Scan(&projectID, &profile); err != nil {
 		return 0, err
 	}
-	if profile != pipeline.KnowledgeShortsID {
-		return 0, fail(http.StatusConflict, "sources apply only to knowledge_shorts episodes")
+	if !takesSources(profile) {
+		return 0, fail(http.StatusConflict, "sources apply only to knowledge_shorts and history_mystery episodes")
 	}
 	return projectID, nil
 }
